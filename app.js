@@ -1,74 +1,69 @@
-// v5.0 Preventivi ELIP Sprint – Catalogo tap-to-add, quantità, sconto, IVA toggle, JSON import/export, PDF
+// v5.1 — Catalogo senza prezzi, IVA 22%, WhatsApp, immagini, XLS, archivio
 const EURO = n => n.toLocaleString('it-IT',{style:'currency',currency:'EUR'});
 const qs = s => document.querySelector(s);
-const qsa = s => [...document.querySelectorAll(s)];
 
-const DEFAULT_CATALOG = [
-  {code:"05", desc:"Smontaggio completo del motore sistematico", price: 80},
-  {code:"29", desc:"Lavaggio componenti e trattamento termico avvolgimenti", price: 60},
-  {code:"06", desc:"Verifiche meccaniche alberi/alloggi cuscinetti + elettriche avvolgimenti", price: 70},
-  {code:"07", desc:"Tornitura, smicatura ed equilibratura rotore", price: 110},
-  {code:"22", desc:"Sostituzione collettore con recupero avvolgimento", price: 150},
-  {code:"01", desc:"Avvolgimento indotto con recupero collettore", price: 220},
-  {code:"01C", desc:"Avvolgimento indotto con sostituzione collettore", price: 320},
-  {code:"08", desc:"Isolamento statore", price: 95},
-  {code:"02", desc:"Avvolgimento statore", price: 280},
-  {code:"31", desc:"Lavorazioni meccaniche albero", price: 90},
-  {code:"32", desc:"Lavorazioni meccaniche flange", price: 85},
-  {code:"19", desc:"Sostituzione spazzole", price: 30},
-  {code:"20", desc:"Sostituzione molle premispazzole", price: 25},
-  {code:"21", desc:"Sostituzione cuscinetti", price: 60},
-  {code:"23", desc:"Sostituzione tenuta meccanica", price: 75},
-  {code:"26", desc:"Sostituzione guarnizioni/paraolio", price: 45},
-  {code:"30", desc:"Montaggio, collaudo e verniciatura", price: 120},
-  {code:"MISC", desc:"Riga libera (personalizzata)", price: 0}
+const DEFAULT_CATALOG=[
+  {code:"05",desc:"Smontaggio completo del motore sistematico"},
+  {code:"29",desc:"Lavaggio componenti e trattamento termico avvolgimenti"},
+  {code:"06",desc:"Verifiche meccaniche alberi/alloggi cuscinetti + elettriche avvolgimenti"},
+  {code:"07",desc:"Tornitura, smicatura ed equilibratura rotore"},
+  {code:"22",desc:"Sostituzione collettore con recupero avvolgimento"},
+  {code:"01",desc:"Avvolgimento indotto con recupero collettore"},
+  {code:"01C",desc:"Avvolgimento indotto con sostituzione collettore"},
+  {code:"08",desc:"Isolamento statore"},
+  {code:"02",desc:"Avvolgimento statore"},
+  {code:"31",desc:"Lavorazioni meccaniche albero"},
+  {code:"32",desc:"Lavorazioni meccaniche flange"},
+  {code:"19",desc:"Sostituzione spazzole"},
+  {code:"20",desc:"Sostituzione molle premispazzole"},
+  {code:"21",desc:"Sostituzione cuscinetti"},
+  {code:"23",desc:"Sostituzione tenuta meccanica"},
+  {code:"26",desc:"Sostituzione guarnizioni/paraolio"},
+  {code:"30",desc:"Montaggio, collaudo e verniciatura"},
+  {code:"16",desc:"Ricambi vari"}
 ];
 
 function newId(){
-  const d=new Date();
-  return `SPR-${d.getFullYear().toString().slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+  const d=new Date(); return `ELP-${d.getFullYear().toString().slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip_catalog')||'[]'); } catch(_){ return []; } }
-function setCatalog(arr){ localStorage.setItem('elip_catalog', JSON.stringify(arr)); }
-function ensureCatalog(){ if(getCatalog().length===0){ setCatalog(DEFAULT_CATALOG); } }
-function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip_current')||'null'); } catch(_){ return null; } }
-function setCurrent(obj){ localStorage.setItem('elip_current', JSON.stringify(obj)); }
+function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip51_catalog')||'[]'); } catch(_){ return []; } }
+function setCatalog(arr){ localStorage.setItem('elip51_catalog', JSON.stringify(arr)); }
+function ensureCatalog(){ if(getCatalog().length===0) setCatalog(DEFAULT_CATALOG); }
+
+function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip51_current')||'null'); } catch(_){ return null; } }
+function setCurrent(obj){ localStorage.setItem('elip51_current', JSON.stringify(obj)); }
+function getArchive(){ try{ return JSON.parse(localStorage.getItem('elip51_archive')||'[]'); } catch(_){ return []; } }
+function setArchive(arr){ localStorage.setItem('elip51_archive', JSON.stringify(arr)); }
+
+function getOrBootstrap(){
+  let cur=getCurrent();
+  if(!cur){
+    cur={ id:newId(), createdAt:new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', note:'', ivaPerc:22, lines:[], images:[] };
+    setCurrent(cur);
+  }
+  return cur;
+}
 
 function renderCatalog(filter=""){
   const list=qs('#catalogList'); list.innerHTML='';
   const rows=getCatalog().filter(x=> (x.code+x.desc).toLowerCase().includes(filter.toLowerCase()));
-  if(rows.length===0){ list.innerHTML=`<li class="list-group-item text-muted">Nessuna voce…</li>`; return; }
+  if(rows.length===0){ list.innerHTML='<li class="list-group-item text-muted">Nessuna voce…</li>'; return; }
   rows.forEach(x=>{
     const li=document.createElement('li');
     li.className='list-group-item d-flex align-items-center justify-content-between';
-    li.innerHTML=`<div><span class="badge-pill me-2">${x.code}</span>${x.desc}</div><div class="text-muted">${EURO(x.price)}</div>`;
-    li.addEventListener('click', ()=> addLineFromCatalog(x));
+    li.innerHTML=`<div><span class="badge-pill me-2">${x.code}</span>${x.desc}</div>`;
+    li.addEventListener('click', ()=> addLine({code:x.code, desc:x.desc, qty:1, price:0}));
     list.appendChild(li);
   });
 }
 
-function addLineFromCatalog(x){
-  const cur=getOrBootstrap();
-  cur.lines.push({ code:x.code, desc:x.desc, qty:1, price:x.price });
-  setCurrent(cur);
-  renderLines(); recalc();
-}
-
-function addCustomLine(){
-  const cur=getOrBootstrap();
-  cur.lines.push({ code:'', desc:'', qty:1, price:0 });
-  setCurrent(cur); renderLines(); recalc();
-}
-
-function getOrBootstrap(){
-  let cur=getCurrent();
-  if(!cur){ cur={ id:newId(), createdAt:new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', ivaPerc:22, scontoPerc:0, note:'', lines:[] }; setCurrent(cur); }
-  return cur;
-}
+function addLine(line){ const cur=getOrBootstrap(); cur.lines.push(line); setCurrent(cur); renderLines(); recalc(); }
+function addCustomLine(){ addLine({code:'', desc:'', qty:1, price:0}); }
 
 function renderLines(){
-  const body=qs('#linesBody'); const cur=getOrBootstrap(); body.innerHTML='';
+  const cur=getOrBootstrap();
+  const body=qs('#linesBody'); body.innerHTML='';
   cur.lines.forEach((r,idx)=>{
     const tr=document.createElement('tr');
     tr.innerHTML=`
@@ -80,17 +75,17 @@ function renderLines(){
       <td><button class="btn btn-sm btn-outline-danger" data-del="${idx}">✕</button></td>`;
     body.appendChild(tr);
   });
-  // bind
-  body.addEventListener('input', onLineEdit);
-  body.addEventListener('click', onLineDelete);
+  body.oninput = onLineEdit;
+  body.onclick = onLineDelete;
 }
 
 function onLineEdit(e){
   const cur=getOrBootstrap();
-  if(e.target.matches('.line-code')){ cur.lines[e.target.dataset.idx].code = e.target.value; }
-  if(e.target.matches('.line-desc')){ cur.lines[e.target.dataset.idx].desc = e.target.value; }
-  if(e.target.matches('.line-qty')){ cur.lines[e.target.dataset.idx].qty = parseFloat(e.target.value)||0; }
-  if(e.target.matches('.line-price')){ cur.lines[e.target.dataset.idx].price = parseFloat(e.target.value)||0; }
+  const id=e.target.dataset.idx;
+  if(e.target.classList.contains('line-code')) cur.lines[id].code=e.target.value;
+  if(e.target.classList.contains('line-desc')) cur.lines[id].desc=e.target.value;
+  if(e.target.classList.contains('line-qty')) cur.lines[id].qty=parseFloat(e.target.value)||0;
+  if(e.target.classList.contains('line-price')) cur.lines[id].price=parseFloat(e.target.value)||0;
   setCurrent(cur); recalc();
 }
 function onLineDelete(e){
@@ -101,60 +96,64 @@ function onLineDelete(e){
 
 function recalc(){
   const cur=getOrBootstrap();
-  // read header fields
-  cur.cliente = qs('#cliente').value.trim();
-  cur.articolo = qs('#articolo').value.trim();
-  cur.ddt = qs('#ddt').value.trim();
-  cur.telefono = qs('#telefono').value.trim();
-  cur.email = qs('#email').value.trim();
-  cur.ivaPerc = parseFloat(qs('#ivaPerc').value)||22;
-  cur.scontoPerc = Math.min(100, Math.max(0, parseFloat(qs('#scontoPerc').value)||0));
-  cur.note = qs('#note').value;
-  // line totals
+  ['cliente','articolo','ddt','telefono','email','note'].forEach(id=> cur[id]=qs('#'+id).value);
   let imponibile=0;
   cur.lines.forEach((r,i)=>{
-    const lt=(r.qty||0)*(r.price||0);
-    imponibile += lt;
-    const cell=qs('#lineTot'+i); if(cell) cell.textContent = EURO(lt);
+    const lt=(r.qty||0)*(r.price||0); imponibile+=lt;
+    const cell=qs('#lineTot'+i); if(cell) cell.textContent=EURO(lt);
   });
-  const scontoVal = imponibile * (cur.scontoPerc/100);
-  const afterSconto = imponibile - scontoVal;
-  const ivaVal = afterSconto * (cur.ivaPerc/100);
-  const total = afterSconto + ivaVal;
-  // render totals
-  qs('#imponibile').textContent = EURO(imponibile);
-  qs('#scontoVal').textContent = EURO(scontoVal);
-  qs('#subtot').textContent = EURO(afterSconto);
-  qs('#iva').textContent = EURO(ivaVal);
-  qs('#totale').textContent = EURO(total);
-  qs('#ivaLabel').textContent = String(cur.ivaPerc);
-  // persist
+  const iva=imponibile*0.22, total=imponibile+iva;
+  qs('#imponibile').textContent=EURO(imponibile);
+  qs('#iva').textContent=EURO(iva);
+  qs('#totale').textContent=EURO(total);
   setCurrent(cur);
 }
 
 function fillForm(){
   const cur=getOrBootstrap();
-  qs('#quoteId').textContent = cur.id;
+  qs('#quoteId').textContent=cur.id;
   ['cliente','articolo','ddt','telefono','email','note'].forEach(id=> qs('#'+id).value = cur[id]||'');
-  qs('#ivaPerc').value = cur.ivaPerc ?? 22;
-  qs('#scontoPerc').value = cur.scontoPerc ?? 0;
+  renderImages();
 }
 
-function newQuote(){
-  localStorage.removeItem('elip_current'); 
+/* Images */
+function handleImages(files){
   const cur=getOrBootstrap();
-  qs('#quoteId').textContent = cur.id;
-  renderLines(); fillForm(); recalc();
+  const promises=[...files].map(file=> new Promise(res=>{
+    const reader=new FileReader();
+    reader.onload=()=> res(reader.result);
+    reader.readAsDataURL(file);
+  }));
+  Promise.all(promises).then(datas=>{
+    cur.images = (cur.images||[]).concat(datas);
+    setCurrent(cur); renderImages();
+  });
+}
+function renderImages(){
+  const cur=getOrBootstrap();
+  const wrap=qs('#imgPreview'); wrap.innerHTML='';
+  (cur.images||[]).forEach((src,idx)=>{
+    const div=document.createElement('div'); div.className='thumb-wrap';
+    div.innerHTML=`<img class="thumb" src="${src}"><button class="btn btn-sm btn-outline-danger" data-delimg="${idx}">✕</button>`;
+    wrap.appendChild(div);
+  });
+  wrap.onclick = (e)=>{
+    const b=e.target.closest('button[data-delimg]'); if(!b) return;
+    const i=+b.getAttribute('data-delimg');
+    const cur=getOrBootstrap(); cur.images.splice(i,1); setCurrent(cur); renderImages();
+  };
 }
 
+/* Save / Archive */
 function saveQuote(){
   const cur=getOrBootstrap();
-  const arr=JSON.parse(localStorage.getItem('elip_archive')||'[]');
+  const arr=getArchive();
   const i=arr.findIndex(x=>x.id===cur.id); if(i>=0) arr[i]=cur; else arr.unshift(cur);
-  localStorage.setItem('elip_archive', JSON.stringify(arr));
-  alert('Preventivo salvato in Archivio.');
+  setArchive(arr); alert('Preventivo salvato.');
 }
+function archiveQuote(){ saveQuote(); document.querySelector('[data-bs-target="#tab-archivio"]').click(); renderArchive(); }
 
+/* JSON import/export */
 function exportJSON(){
   const cur=getOrBootstrap();
   const a=document.createElement('a');
@@ -164,12 +163,14 @@ function exportJSON(){
 function importJSON(file){
   const reader=new FileReader();
   reader.onload=()=>{
-    try{ const obj=JSON.parse(reader.result); localStorage.setItem('elip_current', JSON.stringify(obj)); }catch(_){ alert('JSON non valido'); return; }
+    try{ const obj=JSON.parse(reader.result); localStorage.setItem('elip51_current', JSON.stringify(obj)); }
+    catch(_){ alert('JSON non valido'); return; }
     renderLines(); fillForm(); recalc();
   };
   reader.readAsText(file);
 }
 
+/* Catalogo import/export/edit */
 function exportCatalog(){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([JSON.stringify(getCatalog(),null,2)],{type:'application/json'}));
@@ -178,12 +179,11 @@ function exportCatalog(){
 function importCatalog(file){
   const reader=new FileReader();
   reader.onload=()=>{
-    try{ const arr=JSON.parse(reader.result); if(!Array.isArray(arr)) throw new Error(); setCatalog(arr); renderCatalog(qs('#catalogSearch').value||''); }
+    try{ const arr=JSON.parse(reader.result); if(!Array.isArray(arr)) throw 0; setCatalog(arr); renderCatalog(qs('#catalogSearch').value||''); }
     catch(_){ alert('Catalogo JSON non valido'); }
   };
   reader.readAsText(file);
 }
-
 function editCatalog(){
   const arr=getCatalog();
   const text=prompt('Modifica catalogo (JSON):', JSON.stringify(arr,null,2));
@@ -192,7 +192,7 @@ function editCatalog(){
   catch(_){ alert('JSON non valido'); }
 }
 
-/* --------- PDF ---------- */
+/* PDF */
 async function addHeader(doc,pad,cur){
   doc.setFontSize(16); doc.text('Preventivo', pad, 80);
   doc.setFontSize(10); const dateIT=new Date().toLocaleDateString('it-IT');
@@ -204,20 +204,14 @@ async function addHeader(doc,pad,cur){
   doc.text(`Telefono: ${cur.telefono||'-'}   Email: ${cur.email||'-'}`, pad, 164);
 }
 function addTotals(doc,pad,cur,startY){
+  let imponibile=cur.lines.reduce((s,r)=>s+(r.qty||0)*(r.price||0),0);
+  let iva=imponibile*0.22, total=imponibile+iva;
   let y=startY;
-  doc.setFontSize(11);
-  doc.text('Riepilogo', pad, y); y+=10;
-  const imponibile = cur.lines.reduce((s,r)=>s+(r.qty||0)*(r.price||0),0);
-  const sconto = imponibile * ((cur.scontoPerc||0)/100);
-  const afterSconto = imponibile - sconto;
-  const iva = afterSconto * ((cur.ivaPerc||22)/100);
-  const totale = afterSconto + iva;
+  doc.setFontSize(11); doc.text('Riepilogo', pad, y); y+=10;
   doc.setFontSize(10);
   doc.text('Imponibile: '+EURO(imponibile), pad, y); y+=12;
-  if ((cur.scontoPerc||0)>0){ doc.text('Sconto: '+EURO(sconto), pad, y); y+=12; }
-  doc.text('Subtotale: '+EURO(afterSconto), pad, y); y+=12;
-  doc.text(`IVA (${cur.ivaPerc||22}%): `+EURO(iva), pad, y); y+=14;
-  doc.setFontSize(12); doc.text('TOTALE: '+EURO(totale), pad, y);
+  doc.text('IVA (22%): '+EURO(iva), pad, y); y+=14;
+  doc.setFontSize(12); doc.text('TOTALE: '+EURO(total), pad, y);
   return y+16;
 }
 async function pdfDettaglio(){
@@ -225,10 +219,18 @@ async function pdfDettaglio(){
   const cur=getOrBootstrap(), doc=new jsPDF({unit:'pt',format:'a4'}), pad=40;
   await addHeader(doc,pad,cur);
   const rows=cur.lines.length? cur.lines.map(r=>[r.code||'', r.desc||'', String(r.qty||0), EURO(r.price||0), EURO((r.qty||0)*(r.price||0))]) : [['','','0','€ 0,00','€ 0,00']];
-  doc.autoTable({startY:190, head:[['Cod','Descrizione','Q.tà','Prezzo','Totale']], body:rows, styles:{fontSize:10,cellPadding:5}, headStyles:{fillColor:[13,110,253]}, columnStyles:{0:{cellWidth:50},1:{cellWidth:260},2:{cellWidth:60,halign:'right'},3:{cellWidth:80,halign:'right'},4:{cellWidth:90,halign:'right'}}});
+  doc.autoTable({startY:190, head:[['Cod','Descrizione','Q.tà','Prezzo','Totale']], body:rows, styles:{fontSize:10,cellPadding:5}, headStyles:{fillColor:[13,110,253]},
+    columnStyles:{0:{cellWidth:50},1:{cellWidth:260},2:{cellWidth:60,halign:'right'},3:{cellWidth:80,halign:'right'},4:{cellWidth:90,halign:'right'}}});
   let y=doc.lastAutoTable.finalY+12;
   const note=(cur.note||'').trim(); if(note){ doc.setFontSize(11); doc.text('NOTE', pad, y); y+=10; doc.setFontSize(10); const w=doc.splitTextToSize(note,455); doc.text(w, pad, y); y+=w.length*12+6; }
   y=addTotals(doc,pad,cur,y+4);
+  for(const src of (cur.images||[])){
+    const img=new Image(); img.src=src; await img.decode();
+    const ratio = Math.min(500/img.width, 500/img.height);
+    const w = Math.round(img.width*ratio), h=Math.round(img.height*ratio);
+    doc.addPage(); doc.setFontSize(12); doc.text('Immagine allegata', pad, 80);
+    doc.addImage(src, 'JPEG', pad, 100, w, h);
+  }
   const url=URL.createObjectURL(doc.output('blob')); const a=qs('#btnDownload'); a.href=url; a.download=cur.id+'-dettaglio.pdf'; a.classList.remove('d-none'); a.click();
 }
 async function pdfTotale(){
@@ -240,10 +242,17 @@ async function pdfTotale(){
   let y=doc.lastAutoTable.finalY+12;
   const note=(cur.note||'').trim(); if(note){ doc.setFontSize(11); doc.text('NOTE', pad, y); y+=10; doc.setFontSize(10); const w=doc.splitTextToSize(note,455); doc.text(w, pad, y); y+=w.length*12+6; }
   y=addTotals(doc,pad,cur,y+4);
+  for(const src of (cur.images||[])){
+    const img=new Image(); img.src=src; await img.decode();
+    const ratio = Math.min(500/img.width, 500/img.height);
+    const w = Math.round(img.width*ratio), h=Math.round(img.height*ratio);
+    doc.addPage(); doc.setFontSize(12); doc.text('Immagine allegata', pad, 80);
+    doc.addImage(src, 'JPEG', pad, 100, w, h);
+  }
   const url=URL.createObjectURL(doc.output('blob')); const a=qs('#btnDownload'); a.href=url; a.download=cur.id+'-totale.pdf'; a.classList.remove('d-none'); a.click();
 }
 
-/* --------- Share ---------- */
+/* Share */
 function shareMail(){
   const cur=getOrBootstrap();
   const subject=encodeURIComponent('Preventivo '+cur.id+' - '+(cur.cliente||''));
@@ -258,53 +267,92 @@ function shareWA(){
   window.open('https://wa.me/?text='+msg, '_blank');
 }
 
-/* --------- Theme ---------- */
-function toggleTheme(){
-  const html=document.documentElement;
-  const curr=html.getAttribute('data-theme')==='dark'?'dark':'light';
-  const next= curr==='dark'?'light':'dark';
-  html.setAttribute('data-theme', next);
-  localStorage.setItem('elip_theme', next);
+/* XLS */
+function exportXLS(){
+  const cur=getOrBootstrap();
+  const data=[["Codice","Descrizione","Quantità","Prezzo","Totale riga"]];
+  cur.lines.forEach(r=> data.push([r.code||"", r.desc||"", r.qty||0, r.price||0, (r.qty||0)*(r.price||0)]));
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const meta=[["ID Preventivo", cur.id],["Cliente",cur.cliente],["Articolo",cur.articolo],["DDT",cur.ddt],["Telefono",cur.telefono],["Email",cur.email],["Imponibile", qs('#imponibile').textContent],["IVA (22%)", qs('#iva').textContent],["Totale", qs('#totale').textContent]];
+  const wsMeta = XLSX.utils.aoa_to_sheet(meta);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsMeta, "Dati");
+  XLSX.utils.book_append_sheet(wb, ws, "Righe");
+  const wbout = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  const blob = new Blob([wbout], {type:"application/octet-stream"});
+  const url=URL.createObjectURL(blob); const a=qs('#btnDownload'); a.href=url; a.download=cur.id+'.xlsx'; a.classList.remove('d-none'); a.click();
 }
-function restoreTheme(){ const t=localStorage.getItem('elip_theme')||'light'; document.documentElement.setAttribute('data-theme',t); }
 
-/* --------- Init ---------- */
-function bindHeader(){
-  qs('#btnDark').addEventListener('click', toggleTheme);
+/* Archivio */
+function renderArchive(){
+  const arr=getArchive();
+  const q=(qs('#filterQuery').value||'').toLowerCase();
+  const body=qs('#archBody'); body.innerHTML='';
+  arr.filter(r=> (r.cliente||'').toLowerCase().includes(q)).forEach(rec=>{
+    const tr=document.createElement('tr');
+    const dateIt=new Date(rec.createdAt).toLocaleDateString('it-IT');
+    const tot = rec.lines.reduce((s,r)=>s+(r.qty||0)*(r.price||0),0)*1.22;
+    tr.innerHTML=`
+      <td>${rec.id}</td><td>${dateIt}</td><td>${rec.cliente||''}</td>
+      <td>${rec.articolo||''}</td><td>${rec.ddt||''}</td><td>${EURO(tot)}</td>
+      <td><button class="btn btn-sm btn-outline-primary" data-open="${rec.id}">Apri</button></td>`;
+    body.appendChild(tr);
+  });
+  body.onclick=(e)=>{
+    const btn=e.target.closest('button[data-open]'); if(!btn) return;
+    const id=btn.getAttribute('data-open');
+    const rec=getArchive().find(x=>x.id===id); if(!rec) return;
+    localStorage.setItem('elip51_current', JSON.stringify(rec));
+    document.querySelector('[data-bs-target=\"#tab-editor\"]').click();
+    renderLines(); fillForm(); recalc(); qs('#quoteId').textContent=rec.id; window.scrollTo({top:0,behavior:'smooth'});
+  };
+}
+
+/* Init */
+function newQuote(){
+  localStorage.removeItem('elip51_current'); const cur=getOrBootstrap();
+  qs('#quoteId').textContent=cur.id; renderLines(); fillForm(); recalc();
+}
+
+function bindAll(){
   qs('#btnNew').addEventListener('click', newQuote);
   qs('#btnSave').addEventListener('click', saveQuote);
+  qs('#btnArchive').addEventListener('click', archiveQuote);
   qs('#btnPDFDett').addEventListener('click', pdfDettaglio);
   qs('#btnPDFTot').addEventListener('click', pdfTotale);
-  qs('#btnShareMail').addEventListener('click', shareMail);
-  qs('#btnShareWA').addEventListener('click', shareWA);
+  qs('#btnXLS').addEventListener('click', exportXLS);
+  qs('#btnMail').addEventListener('click', shareMail);
+  qs('#btnWA').addEventListener('click', shareWA);
   qs('#btnExport').addEventListener('click', exportJSON);
   qs('#btnImport').addEventListener('click', ()=> qs('#jsonImport').click());
   qs('#jsonImport').addEventListener('change', e=> e.target.files[0] && importJSON(e.target.files[0]));
-  // Recalc on header field changes
-  ['cliente','articolo','ddt','telefono','email','note','ivaPerc','scontoPerc'].forEach(id=>{
-    qs('#'+id).addEventListener('input', recalc);
-    qs('#'+id).addEventListener('change', recalc);
-  });
-}
-function bindCatalog(){
+
   qs('#catalogSearch').addEventListener('input', e=> renderCatalog(e.target.value));
   qs('#btnAddCustom').addEventListener('click', addCustomLine);
   qs('#btnEditCatalog').addEventListener('click', editCatalog);
   qs('#btnExportCatalog').addEventListener('click', exportCatalog);
   qs('#btnImportCatalog').addEventListener('click', ()=> qs('#catalogImport').click());
   qs('#catalogImport').addEventListener('change', e=> e.target.files[0] && importCatalog(e.target.files[0]));
+
+  ['cliente','articolo','ddt','telefono','email','note'].forEach(id=>{
+    qs('#'+id).addEventListener('input', recalc);
+    qs('#'+id).addEventListener('change', recalc);
+  });
+
+  qs('#imgInput').addEventListener('change', e=> e.target.files.length && handleImages(e.target.files));
+
+  qs('#btnReloadArch').addEventListener('click', renderArchive);
+  qs('#filterQuery').addEventListener('input', renderArchive);
 }
 
 function init(){
-  restoreTheme();
   ensureCatalog();
   renderCatalog();
   renderLines();
   fillForm();
   recalc();
-  bindHeader();
-  bindCatalog();
-  // first id
-  const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id;
+  bindAll();
+  qs('#quoteId').textContent=getOrBootstrap().id;
+  renderArchive();
 }
 document.addEventListener('DOMContentLoaded', init);

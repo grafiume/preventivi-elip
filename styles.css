@@ -1,5 +1,4 @@
-:root{ --bg:#f8f9fb; --card:#fff; --border:#e5e7eb; --text:#212529; --muted:#6c757d; --brand:#0d6efd; }
-html[data-theme="dark"]{ --bg:#0f1115; --card:#161a22; --border:#252b36; --text:#e9edf3; --muted:#a3a9b6; --brand:#6ea8fe; }
+:root{ --bg:#f8f9fb; --card:#fff; --border:#e5e7eb; --text:#212529; --brand:#0d6efd; }
 body{background:var(--bg); color:var(--text);}
 .appbar{position:sticky; top:0; z-index:1030; background:var(--card); border-bottom:1px solid var(--border);}
 .logo{width:36px;height:36px;border-radius:8px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;}
@@ -13,4 +12,6 @@ input, select, textarea{background:var(--card)!important; color:var(--text)!impo
 .badge-pill{border:1px solid var(--border); background:var(--card); border-radius:999px; padding:.15rem .5rem;}
 .list-group-item{background:var(--card); color:var(--text);}
 .list-group-item:hover{background:rgba(13,110,253,.06); cursor:pointer;}
-.btn-outline-success, .btn-outline-dark, .btn-outline-secondary{border-color:var(--border);}
+.thumb{width:120px; height:90px; object-fit:cover; border:1px solid var(--border); border-radius:6px;}
+.thumb-wrap{position:relative; display:inline-block;}
+.thumb-wrap button{position:absolute; top:4px; right:4px;}
