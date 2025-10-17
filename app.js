@@ -1,4 +1,4 @@
-// v4.2 logic – Avanzamento fix + semaforo + CHIUSO read-only
+// v4.3 – event delegation for 'Avanzamento' + auto-flag + robust modal
 const WORK_ITEMS=[
   {code:"05",desc:"Smontaggio completo del motore sistematico"},
   {code:"29",desc:"Lavaggio componenti, e trattamento termico avvolgimenti"},
@@ -23,10 +23,7 @@ const EURO=n=>n.toLocaleString('it-IT',{style:'currency',currency:'EUR'});
 const qs=s=>document.querySelector(s);
 let progressModal,currentProgressIdx=null;
 
-function newSheetId(){
-  const d=new Date();
-  return `ELIP-${String(d.getFullYear()).slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
-}
+function newSheetId(){ const d=new Date(); return `ELIP-${String(d.getFullYear()).slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;}
 function getCurrent(){ try{return JSON.parse(localStorage.getItem('preventivo_elip_current')||'null')}catch(_){return null} }
 function setCurrent(r){ localStorage.setItem('preventivo_elip_current', JSON.stringify(r)); }
 
@@ -48,25 +45,20 @@ function injectRows(){
       <td class="text-center"><input class="form-check-input item-flag" type="checkbox" data-idx="${i}" ${r.flag?'checked':''}></td>
       <td><div class="input-group"><span class="input-group-text">€</span>
         <input type="number" step="0.01" min="0" class="form-control text-end item-price" data-idx="${i}" placeholder="0,00" ${r.flag?'':'disabled'} value="${r.price||''}"></div></td>
-      <td><button class="btn btn-sm btn-outline-secondary btnProgress" data-idx="${i}" ${r.flag?'':'disabled'}>📍 Avanzamento</button>
-        <div class="mt-1">${progressBadge(r.progress)}</div>
-      </td>`;
+      <td><button class="btn btn-sm btn-outline-secondary btnProgress" data-idx="${i}">📍 Avanzamento</button>
+        <div class="mt-1">${progressBadge(r.progress)}</div></td>`;
     tbody.appendChild(tr);
   });
 }
 
 function computeOverallProgress(rec){
-  const selected=rec.rows.filter(r=>r.flag);
-  if(selected.length===0) return 0;
-  const completed=selected.filter(r=>r.progress && r.progress.stato==='COMPLETATA').length;
-  return Math.round((completed/selected.length)*100);
+  const sel=rec.rows.filter(r=>r.flag); if(sel.length===0) return 0;
+  const comp=sel.filter(r=>r.progress&&r.progress.stato==='COMPLETATA').length;
+  return Math.round((comp/sel.length)*100);
 }
-
 function updateProgressBadge(rec){
-  const badge=qs('#progressBadge');
-  const pct=computeOverallProgress(rec);
-  badge.textContent=`Avanzamento: ${pct}%`;
-  badge.className='badge';
+  const badge=qs('#progressBadge'); const pct=computeOverallProgress(rec);
+  badge.textContent=`Avanzamento: ${pct}%`; badge.className='badge';
   if(rec.stato==='CHIUSO'){ badge.classList.add('bg-success'); badge.textContent='Chiuso (100%)'; return; }
   if(pct<=50){ badge.classList.add('bg-warning','text-dark'); }
   else if(pct<=99){ badge.classList.add('bg-orange'); }
@@ -76,34 +68,36 @@ function updateProgressBadge(rec){
 function recalc(){
   let subtotal=0;
   document.querySelectorAll('.item-price').forEach(inp=>{
-    if(!inp.disabled){
-      const val=parseFloat(String(inp.value).replace(',', '.'))||0;
-      subtotal+=val;
-    }
+    if(!inp.disabled){ subtotal+=(parseFloat(String(inp.value).replace(',','.'))||0); }
   });
   const vat=subtotal*0.22;
   qs('#subtot').textContent=EURO(subtotal);
   qs('#iva').textContent=EURO(vat);
   qs('#totale').textContent=EURO(subtotal+vat);
-  // progress badge
-  const rec=collectForm(); updateProgressBadge(rec);
+  updateProgressBadge(collectForm());
 }
 
 function bindRowEvents(){
-  document.querySelectorAll('.item-flag').forEach(chk=>{
-    chk.addEventListener('change', e=>{
+  // toggle enable for price when checkbox changes
+  document.getElementById('workBody').addEventListener('change', (e)=>{
+    if(e.target.matches('.item-flag')){
       const idx=+e.target.dataset.idx;
       const price=document.querySelector(`.item-price[data-idx="${idx}"]`);
-      const btn=document.querySelector(`.btnProgress[data-idx="${idx}"]`);
-      price.disabled=!e.target.checked; btn.disabled=!e.target.checked;
+      price.disabled=!e.target.checked;
       saveDraft(); recalc();
-    });
+    }
   });
-  document.querySelectorAll('.item-price').forEach(inp=>{
-    inp.addEventListener('input', ()=>{ recalc(); saveDraft(); });
+  document.getElementById('workBody').addEventListener('input', (e)=>{
+    if(e.target.matches('.item-price')){ recalc(); saveDraft(); }
   });
-  document.querySelectorAll('.btnProgress').forEach(btn=>{
-    btn.addEventListener('click', ()=> openProgressModal(+btn.dataset.idx));
+  // EVENT DELEGATION for Avanzamento button
+  document.getElementById('workBody').addEventListener('click', (e)=>{
+    const btn=e.target.closest('.btnProgress'); if(!btn) return;
+    const idx=+btn.dataset.idx;
+    // auto-flag row if not already
+    const chk=document.querySelector(`.item-flag[data-idx="${idx}"]`);
+    if(chk && !chk.checked){ chk.checked=true; const price=document.querySelector(`.item-price[data-idx="${idx}"]`); if(price) price.disabled=false; }
+    openProgressModal(idx);
   });
 }
 
@@ -112,15 +106,14 @@ function loadDraft(){
   ['cliente','articolo','ddt','telefono','email','note','inviatoData','operatoreInvio','operatoreLavorazioni','consegnaData']
     .forEach(id=>{ const el=qs('#'+id); if(el) el.value=rec[id]||''; });
   qs('#stato').value=rec['stato']||'DA_INVIARE';
-  if(rec.stato==='CHIUSO'){ setReadOnly(true); } else { setReadOnly(false); }
-  updateProgressBadge(rec);
+  setReadOnly(rec.stato==='CHIUSO'); updateProgressBadge(rec);
 }
 
 function collectForm(){
   const old=getCurrent()||{};
   const rows=WORK_ITEMS.map((w,i)=>{
-    const flag=qs(`.item-flag[data-idx="${i}"]`).checked;
-    const price=qs(`.item-price[data-idx="${i}"]`).value;
+    const flag=qs(`.item-flag[data-idx="${i}"]`)?.checked||false;
+    const price=qs(`.item-price[data-idx="${i}"]`)?.value||'';
     const oldp=(old.rows&&old.rows[i])?old.rows[i].progress:null;
     return {code:w.code,desc:w.desc,flag,price,progress:oldp};
   });
@@ -144,10 +137,9 @@ function collectForm(){
     consegnaData: qs('#consegnaData').value
   };
 }
-
 function saveDraft(){
-  const rec=collectForm();
-  setCurrent(rec);
+  const rec=collectForm(); setCurrent(rec);
+  // refresh badges
   rec.rows.forEach((r,i)=>{
     const slot=document.querySelectorAll('#workBody tr')[i]?.querySelector('td:last-child div.mt-1');
     if(slot) slot.innerHTML=progressBadge(r.progress);
@@ -157,8 +149,7 @@ function saveDraft(){
 
 function pushToArchive(rec){
   const arr=JSON.parse(localStorage.getItem('preventivo_elip_archive')||'[]');
-  const idx=arr.findIndex(x=>x.id===rec.id);
-  if(idx>=0) arr[idx]=rec; else arr.unshift(rec);
+  const idx=arr.findIndex(x=>x.id===rec.id); if(idx>=0) arr[idx]=rec; else arr.unshift(rec);
   localStorage.setItem('preventivo_elip_archive', JSON.stringify(arr));
 }
 
@@ -244,16 +235,13 @@ function renderArchive(){
     return (!fStato||r.stato===fStato)&&(!fQuery||k.includes(fQuery));
   }).forEach(rec=>{
     const tr=document.createElement('tr');
-    // alert consegna
     if(rec.stato==='CONFERMATO'&&rec.consegnaData){
       const d=new Date(rec.consegnaData+'T00:00:00'); if(d>=now && d<=in7) tr.classList.add('alert-row');
     }
-    // semaforo
-    const pct=computeOverallProgress(rec);
-    let semaf=`<span class="badge bg-warning text-dark">${pct}%</span>`;
-    if(rec.stato==='CHIUSO') semaf='<span class="badge bg-success">verde</span>';
-    else if(pct>50 && pct<100) semaf='<span class="badge bg-orange">arancione</span>';
-    else if(pct<=50) semaf='<span class="badge bg-warning text-dark">giallo</span>';
+    const pct=(rec.stato==='CHIUSO')?100:computeOverallProgress(rec);
+    let semaf= (rec.stato==='CHIUSO')?'<span class="badge bg-success">verde</span>'
+        : (pct>50&&pct<100)?'<span class="badge bg-orange">arancione</span>'
+        : '<span class="badge bg-warning text-dark">giallo</span>';
     const dateIt=new Date(rec.createdAt).toLocaleDateString('it-IT');
     tr.innerHTML=`
       <td>${rec.id}</td><td>${dateIt}</td><td>${rec.cliente||''}</td>
@@ -277,9 +265,8 @@ function renderArchive(){
 }
 
 function openProgressModal(idx){
-  currentProgressIdx=idx;
-  // ensure modal instance
   if(!progressModal){ progressModal=new bootstrap.Modal(document.getElementById('progressModal')); }
+  currentProgressIdx=idx;
   const rec=getCurrent()||collectForm();
   const r=rec.rows[idx]||{}; const p=r.progress||{};
   qs('#pmCode').textContent='('+(r.code||'')+')';
@@ -301,8 +288,9 @@ function saveProgressFromModal(){
     presa: qs('#pmPresa').value,
     concluso: qs('#pmConcluso').value
   };
-  setCurrent(rec); injectRows(); bindRowEvents(); recalc();
-  if(progressModal) progressModal.hide();
+  setCurrent(rec);
+  injectRows(); bindRowEvents(); recalc();
+  progressModal.hide();
 }
 
 function setReadOnly(lock){
@@ -330,20 +318,12 @@ function bindTopButtons(){
   qs('#btnReloadArch').addEventListener('click', renderArchive);
   qs('#filterStato').addEventListener('change', renderArchive);
   qs('#filterQuery').addEventListener('input', renderArchive);
-  qs('#pmSave').addEventListener('click', saveProgressFromModal);
-  // stato lock
-  qs('#stato').addEventListener('change', ()=>{
-    const rec=collectForm(); setCurrent(rec);
-    setReadOnly(rec.stato==='CHIUSO'); updateProgressBadge(rec);
-  });
-}
-function bindOtherFields(){
-  ['cliente','articolo','ddt','telefono','email','note','inviatoData','operatoreInvio','operatoreLavorazioni','consegnaData']
-    .forEach(id=>{ const el=qs('#'+id); el.addEventListener('input', saveDraft); el.addEventListener('change', saveDraft); });
+  document.getElementById('pmSave').addEventListener('click', saveProgressFromModal);
+  qs('#stato').addEventListener('change', ()=>{ const rec=collectForm(); setCurrent(rec); setReadOnly(rec.stato==='CHIUSO'); updateProgressBadge(rec); });
 }
 
 function init(){
-  injectRows(); bindRowEvents(); bindTopButtons(); bindOtherFields(); loadDraft(); recalc();
+  injectRows(); bindRowEvents(); bindTopButtons(); loadDraft(); recalc();
   if(!qs('#sheetId').textContent) qs('#sheetId').textContent=newSheetId();
   renderArchive();
 }

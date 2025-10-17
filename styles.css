@@ -15,6 +15,8 @@ body{background:var(--brand-bg); padding-bottom:72px;}
 .dot-gray{background:#adb5bd}.dot-blue{background:#0d6efd}.dot-green{background:#198754}
 .badge.bg-orange{background:var(--orange);}
 #progressBadge{font-weight:600}
-.readonly input, .readonly textarea, .readonly select, .readonly button.btn:not(#btnPDFDett):not(#btnPDFTot):not(#btnMail):not(#btnScarica){
+.readonly input, .readonly textarea, .readonly select, .readonly button.btn{
   pointer-events:none; opacity:.6;
 }
+/* keep PDF buttons clickable even in readonly */
+.readonly #btnPDFDett, .readonly #btnPDFTot, .readonly #btnMail, .readonly #btnScarica { pointer-events:auto; opacity:1;}
