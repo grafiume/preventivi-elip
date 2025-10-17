@@ -17,42 +17,45 @@
   <script src="app.js" defer></script>
 </head>
 <body>
-  <header class="appbar">
-    <div class="container-fluid d-flex align-items-center justify-content-between py-2">
-      <div class="d-flex align-items-center gap-3">
-        <img src="logo-elip.jpg" class="brand" alt="ELIP">
-        <div>
-          <div class="fw-bold">ELIP Tagliente — Preventivi</div>
-          <div class="small text-muted" id="quoteId"></div>
-        </div>
-      </div>
-      <div class="d-flex align-items-center gap-2 flex-wrap">
-        <button id="btnNew" class="btn btn-sm btn-outline-secondary">Nuovo</button>
-        <button id="btnSave" class="btn btn-sm btn-primary">Salva</button>
-        <button id="btnArchive" class="btn btn-sm btn-outline-warning">Archivia</button>
-        <div class="btn-group">
-          <button id="btnPDFDett" class="btn btn-sm btn-success">PDF Dettaglio</button>
-          <button id="btnPDFTot" class="btn btn-sm btn-outline-success">PDF Totale</button>
-        </div>
-        <button id="btnMail" class="btn btn-sm btn-outline-dark">E-mail</button>
-        <button id="btnWA" class="btn btn-sm btn-outline-success">WhatsApp</button>
+<header class="appbar">
+  <div class="container-fluid d-flex align-items-center justify-content-between py-2">
+    <div class="d-flex align-items-center gap-3">
+      <img src="logo-elip.jpg" class="brand" alt="ELIP">
+      <div>
+        <div class="fw-bold">ELIP Tagliente — Preventivi</div>
+        <div class="small text-muted" id="quoteId"></div>
       </div>
     </div>
-  </header>
-
-  <main class="container-fluid my-3" id="appMain">
-    <div id="catalogContainer"></div>
-    <div id="archiveContainer" class="mt-4"></div>
-  </main>
-
-  <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1200">
-    <div id="toastSave" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="d-flex">
-        <div class="toast-body" id="toastSaveMsg">✅ Preventivo salvato con successo</div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <button id="btnNew" class="btn btn-sm btn-outline-secondary">Nuovo</button>
+      <button id="btnSave" class="btn btn-sm btn-primary">Salva</button>
+      <button id="btnArchive" class="btn btn-sm btn-outline-warning">Archivia</button>
+      <div class="btn-group">
+        <button id="btnPDFDett" class="btn btn-sm btn-success">PDF Dettaglio</button>
+        <button id="btnPDFTot" class="btn btn-sm btn-outline-success">PDF Totale</button>
       </div>
+      <button id="btnMail" class="btn btn-sm btn-outline-dark">E-mail</button>
+      <button id="btnWA" class="btn btn-sm btn-outline-success">WhatsApp</button>
     </div>
   </div>
+</header>
+
+<main class="container-fluid my-3" id="appMain">
+  <div id="kpiContainer" class="d-flex gap-2 flex-wrap mb-3"></div>
+  <div id="catalogContainer" class="mb-3"></div>
+  <div id="preventivoContainer" class="mb-3"></div>
+  <div id="archiveContainer"></div>
+</main>
+
+<!-- Toast -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1200">
+  <div id="toastSave" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="toastSaveMsg">✅ Preventivo salvato con successo</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
