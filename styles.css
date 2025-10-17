@@ -11,11 +11,8 @@ body{background:var(--bg); color:var(--text);}
 input, select, textarea{background:var(--card)!important; color:var(--text)!important; border-color:var(--border)!important;}
 .form-control:focus{box-shadow:none;border-color:var(--accent)!important;}
 .footer{border-top:2px solid var(--red);}
-.badge-pill{border:1px solid var(--border); background:var(--card); border-radius:999px; padding:.15rem .5rem;}
-.list-group-item{background:var(--card); color:var(--text);}
-.list-group-item:hover{background:rgba(199,119,59,.08); cursor:pointer;}
 .progress-bar{background:linear-gradient(90deg, var(--green), var(--accent)); font-weight:700;}
-.thumb{width:140px; height:105px; object-fit:cover; border:1px solid var(--border); border-radius:6px;}
+.thumb{width:140px; height:105px; object-fit:cover; border:1px solid var(--border); border-radius:6px; cursor:pointer;}
 .thumb-wrap{position:relative; display:inline-block;}
 .thumb-wrap button{position:absolute; top:4px; right:4px;}
 .badge-deadline{background:var(--warn); color:#000; font-weight:700;}
@@ -24,7 +21,15 @@ input, select, textarea{background:var(--card)!important; color:var(--text)!impo
 .btn-state-dot.red{background:var(--red);}
 .btn-state-dot.green{background:var(--green);}
 .code-input{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;}
-/* Accettazione pill */
+
+/* Catalogo armonizzato */
+.catalog .list-group-item{background:var(--card); color:var(--text); padding:.5rem .75rem;}
+.catalog .list-group-item + .list-group-item{border-top:1px dashed var(--border);}
+.catalog .list-group-item:hover{background:rgba(199,119,59,.06); cursor:pointer;}
+.catalog .rowline{display:grid; grid-template-columns: 64px 1fr; align-items:center; gap:.5rem;}
+.code-badge{display:inline-flex; justify-content:center; align-items:center; width:56px; height:28px; border-radius:999px; font-weight:700; background:#f2f2f2; border:1px solid var(--border);}
+
+/* Accettazione pill (solo archivio) */
 .acc-pill{display:inline-flex;align-items:center;gap:6px;font-weight:700;padding:6px 10px;border-radius:999px;border:2px solid transparent}
 .acc-pill::before{content:"";display:inline-block;width:14px;height:14px;border-radius:50%}
 .acc-ok{color:#0f5132;background:#d1e7dd;border-color:#badbcc}

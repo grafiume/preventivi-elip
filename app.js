@@ -1,4 +1,4 @@
-// v5.9 — remove catalog hint, acceptance badge (OK/NO) in form and archive
+// v6.1 — catalogo armonizzato + zoom immagini
 const EURO = n => n.toLocaleString('it-IT',{style:'currency',currency:'EUR'});
 const qs = s => document.querySelector(s);
 
@@ -24,18 +24,18 @@ const DEFAULT_CATALOG=[
 ];
 
 function nextId(){
-  const d=new Date(); const y=d.getFullYear(); const key='elip59_seq_'+y;
+  const d=new Date(); const y=d.getFullYear(); const key='elip61_seq_'+y;
   let seq = parseInt(localStorage.getItem(key)||'0',10)+1; localStorage.setItem(key,String(seq));
   return `ELP-${y}-${String(seq).padStart(4,'0')}`;
 }
 
-function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip59_catalog')||'[]'); } catch(_){ return []; } }
-function setCatalog(arr){ localStorage.setItem('elip59_catalog', JSON.stringify(arr)); }
+function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip61_catalog')||'[]'); } catch(_){ return []; } }
+function setCatalog(arr){ localStorage.setItem('elip61_catalog', JSON.stringify(arr)); }
 function ensureCatalog(){ if(getCatalog().length===0) setCatalog(DEFAULT_CATALOG); }
-function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip59_current')||'null'); } catch(_){ return null; } }
-function setCurrent(obj){ localStorage.setItem('elip59_current', JSON.stringify(obj)); }
-function getArchive(){ try{ return JSON.parse(localStorage.getItem('elip59_archive')||'[]'); } catch(_){ return []; } }
-function setArchive(arr){ localStorage.setItem('elip59_archive', JSON.stringify(arr)); }
+function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip61_current')||'null'); } catch(_){ return null; } }
+function setCurrent(obj){ localStorage.setItem('elip61_current', JSON.stringify(obj)); }
+function getArchive(){ try{ return JSON.parse(localStorage.getItem('elip61_archive')||'[]'); } catch(_){ return []; } }
+function setArchive(arr){ localStorage.setItem('elip61_archive', JSON.stringify(arr)); }
 
 function getOrBootstrap(){
   let cur=getCurrent();
@@ -63,8 +63,8 @@ function renderCatalog(filter=""){
   if(rows.length===0){ list.innerHTML='<li class="list-group-item text-muted">Nessuna voce…</li>'; return; }
   rows.forEach(x=>{
     const li=document.createElement('li');
-    li.className='list-group-item d-flex align-items-center justify-content-between';
-    li.innerHTML=`<div><span class="badge-pill me-2">${x.code}</span>${x.desc}</div>`;
+    li.className='list-group-item';
+    li.innerHTML=`<div class="rowline"><span class="code-badge">${x.code}</span><span>${x.desc}</span></div>`;
     li.addEventListener('click', ()=> addLine({code:x.code, desc:x.desc, qty:1, price:0, done:false, doneBy:'', doneDate:''}));
     list.appendChild(li);
   });
@@ -133,13 +133,6 @@ function onLineClick(e){
 function recalc(){
   const cur=getOrBootstrap();
   ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id=> cur[id]=qs('#'+id).value);
-  // badge accettazione
-  const badge = qs('#accBadge');
-  if((cur.dataAcc||'').trim()){
-    badge.textContent = '● OK'; badge.classList.remove('acc-no'); badge.classList.add('acc-ok');
-  } else {
-    badge.textContent = '● NO'; badge.classList.remove('acc-ok'); badge.classList.add('acc-no');
-  }
   let imponibile=0, toDo=0, done=0;
   cur.lines.forEach((r,i)=>{
     const lt=(r.qty||0)*(r.price||0); imponibile+=lt;
@@ -156,17 +149,6 @@ function recalc(){
   setCurrent(cur);
 }
 
-function fillForm(){
-  const cur=getOrBootstrap();
-  qs('#quoteId').textContent=cur.id;
-  ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id=> qs('#'+id).value = cur[id]||'');
-  // init badge
-  const badge = qs('#accBadge');
-  if((cur.dataAcc||'').trim()){ badge.textContent='● OK'; badge.classList.add('acc-ok'); }
-  else { badge.textContent='● NO'; badge.classList.add('acc-no'); }
-  renderImages();
-}
-
 /* Images */
 function handleImages(files){
   const cur=getOrBootstrap();
@@ -178,12 +160,18 @@ function renderImages(){
   const wrap=qs('#imgPreview'); wrap.innerHTML='';
   (cur.images||[]).forEach((src,idx)=>{
     const div=document.createElement('div'); div.className='thumb-wrap';
-    div.innerHTML=`<img class="thumb" src="${src}"><button class="btn btn-sm btn-outline-danger" data-delimg="${idx}">✕</button>`;
+    div.innerHTML=`<img class="thumb" src="${src}" data-zoom="${idx}"><button class="btn btn-sm btn-outline-danger" data-delimg="${idx}">✕</button>`;
     wrap.appendChild(div);
   });
   wrap.onclick = (e)=>{
-    const b=e.target.closest('button[data-delimg]'); if(!b) return;
-    const i=+b.getAttribute('data-delimg'); const cur=getOrBootstrap(); cur.images.splice(i,1); setCurrent(cur); renderImages();
+    const b=e.target.closest('button[data-delimg]'); 
+    if(b){ const i=+b.getAttribute('data-delimg'); const cur=getOrBootstrap(); cur.images.splice(i,1); setCurrent(cur); renderImages(); return; }
+    const img=e.target.closest('img[data-zoom]'); 
+    if(img){
+      const idx=+img.getAttribute('data-zoom'); const cur=getOrBootstrap();
+      const modalImg = document.getElementById('imgModalImg'); modalImg.src = cur.images[idx];
+      const modal = new bootstrap.Modal(document.getElementById('imgModal')); modal.show();
+    }
   };
 }
 
@@ -195,41 +183,59 @@ function saveQuote(){
   setArchive(arr); alert('Preventivo salvato.');
 }
 function archiveQuote(){ saveQuote(); document.querySelector('[data-bs-target="#tab-archivio"]').click(); renderArchive(); }
+
+/* Archivio con filtri combinati (portato da v6.0) */
+let ACC_FILTER = 'all'; // all | ok | no
+function setAccFilter(v){
+  ACC_FILTER = v;
+  qs('#fltAll').classList.toggle('active', v==='all');
+  qs('#fltOk').classList.toggle('active', v==='ok');
+  qs('#fltNo').classList.toggle('active', v==='no');
+  renderArchive();
+}
+function computeAccCounters(arr){
+  let ok=0,no=0; arr.forEach(r=> ((r.dataAcc||'').trim()? ok++: no++)); 
+  const el=qs('#accCounters'); if(el) el.textContent = `Accettati: ${ok} — Da accettare: ${no}`;
+}
 function renderArchive(){
   const arr=getArchive();
+  computeAccCounters(arr);
   const q=(qs('#filterQuery').value||'').toLowerCase();
   const body=document.getElementById('archBody'); body.innerHTML='';
   const today = new Date(); today.setHours(0,0,0,0);
-  arr.filter(r=> (r.cliente||'').toLowerCase().includes(q)).forEach(rec=>{
-    const tot = rec.lines.reduce((s,r)=>s+(r.qty||0)*(r.price||0),0)*1.22;
-    const toDo = rec.lines.filter(r=> (r.qty||0)>0 || (r.price||0)>0 || (r.desc||'').trim()!=='').length;
-    const done = rec.lines.filter(r=> r.done).length;
-    const pct = toDo? Math.round((done/toDo)*100):0;
-    const dot = pct===100 ? '<span style="color:var(--green)">●</span>' : '<span style="color:var(--red)">●</span>';
-    let scadTd = '<span class="text-muted">-</span>';
-    if(rec.dataScad){
-      const d=new Date(rec.dataScad); d.setHours(0,0,0,0);
-      const diff = Math.round((d - today)/(1000*60*60*24));
-      if(diff <= 5 && diff >= 0) scadTd = `<span class="badge badge-deadline">Scade in ${diff} g</span>`;
-      else if(diff < 0) scadTd = `<span class="badge bg-danger">Scaduto</span>`;
-      else scadTd = new Date(rec.dataScad).toLocaleDateString('it-IT');
-    }
-    const accBadge = (rec.dataAcc||'').trim() ? '<span class="acc-pill acc-ok">● OK</span>' : '<span class="acc-pill acc-no">● NO</span>';
-    const tr=document.createElement('tr');
-    const dateIt=new Date(rec.createdAt).toLocaleDateString('it-IT');
-    tr.innerHTML=`
-      <td>${rec.id}</td><td>${dateIt}</td><td>${rec.cliente||''}</td>
-      <td>${rec.articolo||''}</td><td>${rec.ddt||''}</td><td>${EURO(tot)}</td>
-      <td>${accBadge}</td>
-      <td>${scadTd}</td><td>${dot} ${pct}%</td>
-      <td><button class="btn btn-sm btn-outline-primary" data-open="${rec.id}">Modifica</button></td>`;
-    body.appendChild(tr);
-  });
+  arr
+    .filter(r=> (r.cliente||'').toLowerCase().includes(q))
+    .filter(r=> (ACC_FILTER==='all') || (ACC_FILTER==='ok' && (r.dataAcc||'').trim()) || (ACC_FILTER==='no' && !(r.dataAcc||'').trim()))
+    .forEach(rec=>{
+      const tot = rec.lines.reduce((s,r)=>s+(r.qty||0)*(r.price||0),0)*1.22;
+      const toDo = rec.lines.filter(r=> (r.qty||0)>0 || (r.price||0)>0 || (r.desc||'').trim()!=='').length;
+      const done = rec.lines.filter(r=> r.done).length;
+      const pct = toDo? Math.round((done/toDo)*100):0;
+      const dot = pct===100 ? '<span style="color:var(--green)">●</span>' : '<span style="color:var(--red)">●</span>';
+      let scadTd = '<span class="text-muted">-</span>';
+      if(rec.dataScad){
+        const d=new Date(rec.dataScad); d.setHours(0,0,0,0);
+        const diff = Math.round((d - today)/(1000*60*60*24));
+        if(diff <= 5 && diff >= 0) scadTd = `<span class="badge badge-deadline">Scade in ${diff} g</span>`;
+        else if(diff < 0) scadTd = `<span class="badge bg-danger">Scaduto</span>`;
+        else scadTd = new Date(rec.dataScad).toLocaleDateString('it-IT');
+      }
+      const accBadge = (rec.dataAcc||'').trim() ? '<span class="acc-pill acc-ok">● OK</span>' : '<span class="acc-pill acc-no">● NO</span>';
+      const tr=document.createElement('tr');
+      const dateIt=new Date(rec.createdAt).toLocaleDateString('it-IT');
+      tr.innerHTML=`
+        <td>${rec.id}</td><td>${dateIt}</td><td>${rec.cliente||''}</td>
+        <td>${rec.articolo||''}</td><td>${rec.ddt||''}</td><td>${EURO(tot)}</td>
+        <td>${accBadge}</td>
+        <td>${scadTd}</td><td>${dot} ${pct}%</td>
+        <td><button class="btn btn-sm btn-outline-primary" data-open="${rec.id}">Modifica</button></td>`;
+      body.appendChild(tr);
+    });
   body.onclick=(e)=>{
     const b=e.target.closest('button[data-open]'); if(!b) return;
     const id=b.getAttribute('data-open');
     const rec=getArchive().find(x=>x.id===id); if(!rec) return;
-    localStorage.setItem('elip59_current', JSON.stringify(rec));
+    localStorage.setItem('elip61_current', JSON.stringify(rec));
     document.querySelector('[data-bs-target="#tab-editor"]').click();
     renderLines(); fillForm(); recalc();
   };
@@ -244,7 +250,7 @@ function editCatalog(){
   catch(_){ alert('JSON non valido'); }
 }
 
-/* PDF builder (immutato rispetto a v5.8) */
+/* PDF/JPG/Email/WA come v6.0 (copiate) */
 async function headerPDF(doc,pad,cur){
   try{
     const img = await fetch('logo-elip.jpg').then(r=>r.blob()).then(b=>new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(b);}));
@@ -304,7 +310,6 @@ async function previewPDF(type){
   const a=qs('#btnDownload'); a.href=url; a.download=(getOrBootstrap().id)+'-'+(type==='dett'?'dettaglio':'totale')+'.pdf';
   const modal = new bootstrap.Modal(document.getElementById('pdfModal')); modal.show();
 }
-/* JPG cover (immutata) */
 function jpgCover(){
   const cur=getOrBootstrap();
   const c=document.createElement('canvas'); c.width=1200; c.height=900; const g=c.getContext('2d');
@@ -323,8 +328,6 @@ function jpgCover(){
   getOrBootstrap().lines.slice(0,maxRows).forEach(r=>{ g.fillText(`${r.code||''} — ${r.desc||''}`, 40, y); y+=step; });
   const url=c.toDataURL('image/jpeg',0.92); const link=qs('#btnJPG'); link.href=url; link.download=cur.id+'-anteprima.jpg';
 }
-
-/* Email / WhatsApp invariati da v5.8 */
 function shareMail(){
   const cur=getOrBootstrap();
   const subject=encodeURIComponent(`ELIP Tagliente — Preventivo ${cur.id}`);
@@ -353,7 +356,6 @@ IBAN IT02U0542441570000001006392
 BIC/SWIFT CODE: BPBAIT3B`;
   window.location.href='mailto:'+(cur.email||'')+'?subject='+subject+'&body='+encodeURIComponent(corpoTxt);
 
-  // HTML di cortesia con tabella Cod + Descrizione
   const rows = cur.lines.map((r,i)=>`
     <tr style="background:${i%2?'#fafafa':'#ffffff'}">
       <td style="border:1px solid #ddd;padding:8px">${r.code||''}</td>
@@ -403,7 +405,6 @@ IBAN IT02U0542441570000001006392 — BIC/SWIFT: BPBAIT3B
   </body></html>`);
   w.document.close();
 }
-
 function shareWA(){
   const cur=getOrBootstrap();
   const lines = cur.lines.map(r=>`• ${r.code||''} ${r.desc||''}`).join('%0A');
@@ -412,7 +413,7 @@ function shareWA(){
 }
 
 /* Init */
-function newQuote(){ localStorage.removeItem('elip59_current'); const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id; renderLines(); fillForm(); recalc(); }
+function newQuote(){ localStorage.removeItem('elip61_current'); const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id; renderLines(); renderImages(); recalc(); }
 function bindAll(){
   qs('#btnNew').addEventListener('click', newQuote);
   qs('#btnSave').addEventListener('click', saveQuote);
@@ -429,9 +430,18 @@ function bindAll(){
   qs('#imgInput').addEventListener('change', e=> e.target.files.length && handleImages(e.target.files));
   qs('#btnReloadArch').addEventListener('click', renderArchive);
   qs('#filterQuery').addEventListener('input', renderArchive);
+  qs('#fltAll').addEventListener('click', ()=> setAccFilter('all'));
+  qs('#fltOk').addEventListener('click', ()=> setAccFilter('ok'));
+  qs('#fltNo').addEventListener('click', ()=> setAccFilter('no'));
+}
+
+function fillForm(){
+  const cur=getOrBootstrap();
+  qs('#quoteId').textContent=cur.id;
+  ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id=> qs('#'+id).value = cur[id]||'');
 }
 
 function init(){
-  ensureCatalog(); buildDatalist(); renderCatalog(); renderLines(); fillForm(); recalc(); bindAll(); qs('#quoteId').textContent=getOrBootstrap().id; renderArchive();
+  ensureCatalog(); buildDatalist(); renderCatalog(); renderLines(); fillForm(); renderImages(); recalc(); bindAll(); renderArchive();
 }
 document.addEventListener('DOMContentLoaded', init);
