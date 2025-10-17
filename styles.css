@@ -20,4 +20,7 @@ input, select, textarea{background:var(--card)!important; color:var(--text)!impo
 .thumb-wrap button{position:absolute; top:4px; right:4px;}
 .badge-deadline{background:var(--warn); color:#000; font-weight:700;}
 .tr-done{background:var(--donebg)!important;}
-.btn-state{min-width:128px;}
+.btn-state-dot{width:28px;height:28px;border-radius:50%;border:none;display:inline-block}
+.btn-state-dot.red{background:var(--red);}
+.btn-state-dot.green{background:var(--green);}
+.code-input{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;}

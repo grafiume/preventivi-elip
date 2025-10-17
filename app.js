@@ -1,4 +1,4 @@
-// v5.7 — stato a pulsante, immagini sempre incluse, catalogo con hint
+// v5.8 — email senza qty/unit, stato grafico, datalist codice→descrizione
 const EURO = n => n.toLocaleString('it-IT',{style:'currency',currency:'EUR'});
 const qs = s => document.querySelector(s);
 
@@ -24,18 +24,18 @@ const DEFAULT_CATALOG=[
 ];
 
 function nextId(){
-  const d=new Date(); const y=d.getFullYear(); const key='elip57_seq_'+y;
+  const d=new Date(); const y=d.getFullYear(); const key='elip58_seq_'+y;
   let seq = parseInt(localStorage.getItem(key)||'0',10)+1; localStorage.setItem(key,String(seq));
   return `ELP-${y}-${String(seq).padStart(4,'0')}`;
 }
 
-function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip57_catalog')||'[]'); } catch(_){ return []; } }
-function setCatalog(arr){ localStorage.setItem('elip57_catalog', JSON.stringify(arr)); }
+function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip58_catalog')||'[]'); } catch(_){ return []; } }
+function setCatalog(arr){ localStorage.setItem('elip58_catalog', JSON.stringify(arr)); }
 function ensureCatalog(){ if(getCatalog().length===0) setCatalog(DEFAULT_CATALOG); }
-function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip57_current')||'null'); } catch(_){ return null; } }
-function setCurrent(obj){ localStorage.setItem('elip57_current', JSON.stringify(obj)); }
-function getArchive(){ try{ return JSON.parse(localStorage.getItem('elip57_archive')||'[]'); } catch(_){ return []; } }
-function setArchive(arr){ localStorage.setItem('elip57_archive', JSON.stringify(arr)); }
+function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip58_current')||'null'); } catch(_){ return null; } }
+function setCurrent(obj){ localStorage.setItem('elip58_current', JSON.stringify(obj)); }
+function getArchive(){ try{ return JSON.parse(localStorage.getItem('elip58_archive')||'[]'); } catch(_){ return []; } }
+function setArchive(arr){ localStorage.setItem('elip58_archive', JSON.stringify(arr)); }
 
 function getOrBootstrap(){
   let cur=getCurrent();
@@ -45,6 +45,16 @@ function getOrBootstrap(){
     setCurrent(cur);
   }
   return cur;
+}
+
+function buildDatalist(){
+  const dl = qs('#catalogCodes'); dl.innerHTML='';
+  getCatalog().forEach(x=>{
+    const opt=document.createElement('option');
+    opt.value = x.code;
+    opt.label = `${x.code} - ${x.desc}`;
+    dl.appendChild(opt);
+  });
 }
 
 function renderCatalog(filter=""){
@@ -69,9 +79,9 @@ function renderLines(){
   cur.lines.forEach((r,idx)=>{
     const tr=document.createElement('tr');
     if(r.done) tr.classList.add('tr-done');
-    const stateBtn = `<button class="btn btn-sm btn-state ${r.done?'btn-success':'btn-danger'}" data-state="${idx}">${r.done?'Completato':'Non eseguito'}</button>`;
+    const stateBtn = `<button class="btn-state-dot ${r.done?'green':'red'}" data-state="${idx}" title="${r.done?'Completato':'Non eseguito'}" aria-label="Stato"></button>`;
     tr.innerHTML=`
-      <td><input class="form-control form-control-sm line-code" data-idx="${idx}" value="${r.code||''}"></td>
+      <td><input class="form-control form-control-sm code-input line-code" list="catalogCodes" data-idx="${idx}" value="${r.code||''}" placeholder="Cod."></td>
       <td><input class="form-control form-control-sm line-desc" data-idx="${idx}" value="${r.desc||''}" placeholder="Descrizione…"></td>
       <td><input type="number" min="0" step="1" class="form-control form-control-sm text-end line-qty" data-idx="${idx}" value="${r.qty||1}"></td>
       <td><input type="number" min="0" step="0.01" class="form-control form-control-sm text-end line-price" data-idx="${idx}" value="${r.price||0}"></td>
@@ -89,7 +99,16 @@ function renderLines(){
 function onLineEdit(e){
   const cur=getOrBootstrap();
   const id=e.target.dataset.idx;
-  if(e.target.classList.contains('line-code')) cur.lines[id].code=e.target.value;
+  if(e.target.classList.contains('line-code')) {
+    const val = e.target.value.trim();
+    cur.lines[id].code=val;
+    const hit = getCatalog().find(x=> x.code.toLowerCase()===val.toLowerCase());
+    if(hit) {
+      cur.lines[id].desc = hit.desc;
+      // aggiorna input descrizione della stessa riga
+      e.target.closest('tr').querySelector('.line-desc').value = hit.desc;
+    }
+  }
   if(e.target.classList.contains('line-desc')) cur.lines[id].desc=e.target.value;
   if(e.target.classList.contains('line-qty')) cur.lines[id].qty=parseFloat(e.target.value)||0;
   if(e.target.classList.contains('line-price')) cur.lines[id].price=parseFloat(e.target.value)||0;
@@ -198,7 +217,7 @@ function renderArchive(){
     const b=e.target.closest('button[data-open]'); if(!b) return;
     const id=b.getAttribute('data-open');
     const rec=getArchive().find(x=>x.id===id); if(!rec) return;
-    localStorage.setItem('elip57_current', JSON.stringify(rec));
+    localStorage.setItem('elip58_current', JSON.stringify(rec));
     document.querySelector('[data-bs-target="#tab-editor"]').click();
     renderLines(); fillForm(); recalc();
   };
@@ -209,11 +228,11 @@ function editCatalog(){
   const arr=getCatalog();
   const text=prompt('Modifica catalogo (JSON):', JSON.stringify(arr,null,2));
   if(!text) return;
-  try{ const parsed=JSON.parse(text); if(!Array.isArray(parsed)) throw 0; setCatalog(parsed); renderCatalog(qs('#catalogSearch').value||''); }
+  try{ const parsed=JSON.parse(text); if(!Array.isArray(parsed)) throw 0; setCatalog(parsed); renderCatalog(qs('#catalogSearch').value||''); buildDatalist(); }
   catch(_){ alert('JSON non valido'); }
 }
 
-/* PDF builder: immagini sempre incluse */
+/* PDF builder */
 async function headerPDF(doc,pad,cur){
   try{
     const img = await fetch('logo-elip.jpg').then(r=>r.blob()).then(b=>new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(b);}));
@@ -289,25 +308,25 @@ function jpgCover(){
   g.font='bold 24px Arial'; g.fillText('Voci incluse', 40, 370);
   g.font='20px Arial';
   let y=410; const step=28, maxRows=12;
-  getOrBootstrap().lines.slice(0,maxRows).forEach(r=>{ g.fillText(`${r.code||''} — ${r.desc||''}  x${r.qty||0}`, 40, y); y+=step; });
+  getOrBootstrap().lines.slice(0,maxRows).forEach(r=>{ g.fillText(`${r.code||''} — ${r.desc||''}`, 40, y); y+=step; });
   const url=c.toDataURL('image/jpeg',0.92); const link=qs('#btnJPG'); link.href=url; link.download=cur.id+'-anteprima.jpg';
 }
 
-/* Email (come v5.6, già migliorata) */
+/* Email (no qty/unit in mailto; HTML table Cod/Descrizione) */
 function shareMail(){
   const cur=getOrBootstrap();
   const subject=encodeURIComponent(`ELIP Tagliente — Preventivo ${cur.id}`);
-  const linesTxt = cur.lines.map(r=>`• ${r.code||''} - ${r.desc||''} (Q.tà ${r.qty||0}) — Totale riga ${EURO((r.qty||0)*(r.price||0))}`).join('\\n');
+  const linesTxt = cur.lines.map(r=>`• ${r.code||''} - ${r.desc||''}`).join('\\n');
   const corpoTxt = `Spett.le CLIENTE
 
 Alleghiamo alla presente il documento in oggetto
 
-Con l'occasione, 
-
 Di seguito il riepilogo dei lavori preventivati:
 ${linesTxt}
 
-porgiamo distinti saluti
+Con l'occasione, 
+
+porgiamo distinti saluti.
 
 
 ELIP Tagliente Srl
@@ -322,12 +341,11 @@ IBAN IT02U0542441570000001006392
 BIC/SWIFT CODE: BPBAIT3B`;
   window.location.href='mailto:'+(cur.email||'')+'?subject='+subject+'&body='+encodeURIComponent(corpoTxt);
 
+  // HTML letter with table Cod + Descrizione
   const rows = cur.lines.map((r,i)=>`
     <tr style="background:${i%2?'#fafafa':'#ffffff'}">
       <td style="border:1px solid #ddd;padding:8px">${r.code||''}</td>
       <td style="border:1px solid #ddd;padding:8px">${(r.desc||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</td>
-      <td style="border:1px solid #ddd;padding:8px;text-align:right">${r.qty||0}</td>
-      <td style="border:1px solid #ddd;padding:8px;text-align:right">${EURO((r.qty||0)*(r.price||0))}</td>
     </tr>`).join('');
   const w=window.open('','_blank');
   w.document.write(`
@@ -342,22 +360,22 @@ Spett.le CLIENTE
 
 Alleghiamo alla presente il documento in oggetto
 
-Con l'occasione,
+Di seguito il riepilogo dei lavori preventivati:
       </div>
-      <div style="height:18px"></div>
+      <div style="height:14px"></div>
       <table style="border-collapse:collapse;width:100%;font-size:15px">
         <thead>
           <tr style="background:#c7773b;color:#fff">
             <th style="border:1px solid #c7773b;padding:10px;text-align:left">Cod</th>
             <th style="border:1px solid #c7773b;padding:10px;text-align:left">Descrizione</th>
-            <th style="border:1px solid #c7773b;padding:10px;text-align:right">Q.tà</th>
-            <th style="border:1px solid #c7773b;padding:10px;text-align:right">Totale riga</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
       <div style="white-space:pre-wrap;font-size:16px;margin-top:24px">
-porgiamo distinti saluti
+Con l'occasione, 
+
+porgiamo distinti saluti.
 
 
 ELIP Tagliente Srl
@@ -378,13 +396,13 @@ BIC/SWIFT CODE: BPBAIT3B
 
 function shareWA(){
   const cur=getOrBootstrap();
-  const lines = cur.lines.map(r=>`• ${r.code||''} ${r.desc||''} x${r.qty||0}`).join('%0A');
+  const lines = cur.lines.map(r=>`• ${r.code||''} ${r.desc||''}`).join('%0A');
   const msg = encodeURIComponent(`ELIP Tagliente — Preventivo ${cur.id}%0ACliente: ${cur.cliente||'-'}%0ATotale: ${document.getElementById('totale').textContent}%0A%0AVoci:%0A`)+lines;
   window.open('https://wa.me/?text='+msg, '_blank');
 }
 
 /* Init */
-function newQuote(){ localStorage.removeItem('elip57_current'); const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id; renderLines(); fillForm(); recalc(); }
+function newQuote(){ localStorage.removeItem('elip58_current'); const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id; renderLines(); fillForm(); recalc(); }
 function bindAll(){
   qs('#btnNew').addEventListener('click', newQuote);
   qs('#btnSave').addEventListener('click', saveQuote);
@@ -404,6 +422,6 @@ function bindAll(){
 }
 
 function init(){
-  ensureCatalog(); renderCatalog(); renderLines(); fillForm(); recalc(); bindAll(); qs('#quoteId').textContent=getOrBootstrap().id; renderArchive();
+  ensureCatalog(); buildDatalist(); renderCatalog(); renderLines(); fillForm(); recalc(); bindAll(); qs('#quoteId').textContent=getOrBootstrap().id; renderArchive();
 }
 document.addEventListener('DOMContentLoaded', init);

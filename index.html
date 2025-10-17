@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Preventivi ELIP – v5.7</title>
+  <title>Preventivi ELIP – v5.8</title>
   <meta name="theme-color" content="#c7773b">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
@@ -47,24 +47,24 @@
   <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white">
     <div class="tab-pane fade show active" id="tab-editor">
       <div class="row g-3">
-        <aside class="col-12 col-lg-4">
+        <aside class="col-12 col-lg-3">
           <div class="card h-100">
             <div class="card-header bg-light d-flex align-items-center gap-2">
               <span class="fw-semibold">Catalogo voci</span>
-              <span class="badge bg-warning text-dark">Fai clic sulle lavorazioni da aggiungere</span>
-              <input id="catalogSearch" class="form-control form-control-sm ms-auto" placeholder="Cerca…">
-              <button id="btnAddCustom" class="btn btn-sm btn-outline-primary">+ Riga</button>
+              <span class="badge bg-warning text-dark">Clicca una voce per aggiungerla</span>
             </div>
-            <div class="card-body p-0">
+            <div class="card-body p-2">
+              <input id="catalogSearch" class="form-control form-control-sm mb-2" placeholder="Cerca…">
               <ul id="catalogList" class="list-group list-group-flush small"></ul>
             </div>
             <div class="card-footer d-flex gap-2">
+              <button id="btnAddCustom" class="btn btn-sm btn-outline-primary">+ Riga vuota</button>
               <button id="btnEditCatalog" class="btn btn-sm btn-outline-secondary">Modifica catalogo</button>
             </div>
           </div>
         </aside>
 
-        <section class="col-12 col-lg-8">
+        <section class="col-12 col-lg-9">
           <div class="card mb-2">
             <div class="card-body">
               <div class="row g-2">
@@ -109,19 +109,20 @@
               <table class="table table-hover align-middle m-0" id="linesTable">
                 <thead class="table-light">
                   <tr>
-                    <th style="width:80px">Cod</th>
+                    <th style="width:110px">Cod</th>
                     <th>Descrizione</th>
                     <th style="width:90px">Q.tà</th>
                     <th style="width:120px">Prezzo €</th>
                     <th style="width:130px">Tot. riga €</th>
-                    <th style="width:140px">Stato</th>
-                    <th style="width:160px">Operatore</th>
-                    <th style="width:170px">Data fine</th>
+                    <th style="width:70px" class="text-center" title="Stato avanzamento">Stato</th>
+                    <th style="width:150px">Operatore</th>
+                    <th style="width:160px">Data fine</th>
                     <th style="width:60px"></th>
                   </tr>
                 </thead>
                 <tbody id="linesBody"></tbody>
               </table>
+              <datalist id="catalogCodes"></datalist>
             </div>
             <div class="card-body">
               <label class="form-label">NOTE</label>
@@ -190,7 +191,7 @@
 </div>
 
 <footer class="footer small text-muted text-center py-2">
-  © ELIP — Preventivi v5.7
+  © ELIP — Preventivi v5.8
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
