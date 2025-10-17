@@ -1,334 +1,310 @@
-// v4.4.1 – fix 'semaf' use & custom modal (no Bootstrap JS)
-const WORK_ITEMS=[
-  {code:"05",desc:"Smontaggio completo del motore sistematico"},
-  {code:"29",desc:"Lavaggio componenti, e trattamento termico avvolgimenti"},
-  {code:"06",desc:"Verifiche meccaniche alberi e alloggiamento cuscinetti e verifiche elettriche avvolgimenti"},
-  {code:"07",desc:"Tornitura, smicatura ed equilibratura rotore"},
-  {code:"22",desc:"Sostituzione collettore con recupero avvolgimento"},
-  {code:"01",desc:"Avvolgimento indotto con recupero collettore"},
-  {code:"01C",desc:"Avvolgimento indotto con sostituzione collettore"},
-  {code:"08",desc:"Isolamento statore"},
-  {code:"02",desc:"Avvolgimento statore"},
-  {code:"31",desc:"Lavorazioni meccaniche albero"},
-  {code:"32",desc:"Lavorazioni meccaniche flange"},
-  {code:"19",desc:"Sostituzione spazzole"},
-  {code:"20",desc:"Sostituzione molle premispazzole"},
-  {code:"21",desc:"Sostituzione cuscinetti"},
-  {code:"23",desc:"Sostituzione tenuta meccanica"},
-  {code:"26",desc:"Sostituzione guarnizioni/paraolio"},
-  {code:"30",desc:"Montaggio, collaudo e verniciatura"},
-  {code:"16",desc:"Ricambi vari"}
+// v5.0 Preventivi ELIP Sprint – Catalogo tap-to-add, quantità, sconto, IVA toggle, JSON import/export, PDF
+const EURO = n => n.toLocaleString('it-IT',{style:'currency',currency:'EUR'});
+const qs = s => document.querySelector(s);
+const qsa = s => [...document.querySelectorAll(s)];
+
+const DEFAULT_CATALOG = [
+  {code:"05", desc:"Smontaggio completo del motore sistematico", price: 80},
+  {code:"29", desc:"Lavaggio componenti e trattamento termico avvolgimenti", price: 60},
+  {code:"06", desc:"Verifiche meccaniche alberi/alloggi cuscinetti + elettriche avvolgimenti", price: 70},
+  {code:"07", desc:"Tornitura, smicatura ed equilibratura rotore", price: 110},
+  {code:"22", desc:"Sostituzione collettore con recupero avvolgimento", price: 150},
+  {code:"01", desc:"Avvolgimento indotto con recupero collettore", price: 220},
+  {code:"01C", desc:"Avvolgimento indotto con sostituzione collettore", price: 320},
+  {code:"08", desc:"Isolamento statore", price: 95},
+  {code:"02", desc:"Avvolgimento statore", price: 280},
+  {code:"31", desc:"Lavorazioni meccaniche albero", price: 90},
+  {code:"32", desc:"Lavorazioni meccaniche flange", price: 85},
+  {code:"19", desc:"Sostituzione spazzole", price: 30},
+  {code:"20", desc:"Sostituzione molle premispazzole", price: 25},
+  {code:"21", desc:"Sostituzione cuscinetti", price: 60},
+  {code:"23", desc:"Sostituzione tenuta meccanica", price: 75},
+  {code:"26", desc:"Sostituzione guarnizioni/paraolio", price: 45},
+  {code:"30", desc:"Montaggio, collaudo e verniciatura", price: 120},
+  {code:"MISC", desc:"Riga libera (personalizzata)", price: 0}
 ];
-const EURO=n=>n.toLocaleString('it-IT',{style:'currency',currency:'EUR'});
-const qs=s=>document.querySelector(s);
-let currentProgressIdx=null;
 
-function newSheetId(){ const d=new Date(); return `ELIP-${String(d.getFullYear()).slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;}
-function getCurrent(){ try{return JSON.parse(localStorage.getItem('preventivo_elip_current')||'null')}catch(_){return null} }
-function setCurrent(r){ localStorage.setItem('preventivo_elip_current', JSON.stringify(r)); }
-
-function progressBadge(p){
-  if(!p||!p.stato) return '<span class="text-muted small"><span class="progress-dot dot-gray"></span>—</span>';
-  const map={DA_ESEGUIRE:['dot-gray','Da eseguire'],IN_LAVORAZIONE:['dot-blue','In lavorazione'],COMPLETATA:['dot-green','Completata']};
-  const [cls,label]=map[p.stato]||['dot-gray','—'];
-  return `<span class="small"><span class="progress-dot ${cls}"></span>${label}</span>`;
+function newId(){
+  const d=new Date();
+  return `SPR-${d.getFullYear().toString().slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
 }
 
-function injectRows(){
-  const tbody=qs('#workBody'); const rec=getCurrent()||{}; tbody.innerHTML='';
-  WORK_ITEMS.forEach((w,i)=>{
-    const r=(rec.rows&&rec.rows[i])?rec.rows[i]:{flag:false,price:'',progress:null};
-    const tr=document.createElement('tr');
-    tr.innerHTML=`
-      <td><span class="badge bg-secondary-subtle text-secondary-emphasis">${w.code}</span></td>
-      <td>${w.desc}</td>
-      <td class="text-center"><input class="form-check-input item-flag" type="checkbox" data-idx="${i}" ${r.flag?'checked':''}></td>
-      <td><div class="input-group"><span class="input-group-text">€</span>
-        <input type="number" step="0.01" min="0" class="form-control text-end item-price" data-idx="${i}" placeholder="0,00" ${r.flag?'':'disabled'} value="${r.price||''}"></div></td>
-      <td><button class="btn btn-sm btn-outline-secondary btnProgress" data-idx="${i}">📍 Avanzamento</button>
-        <div class="mt-1">${progressBadge(r.progress)}</div></td>`;
-    tbody.appendChild(tr);
+function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip_catalog')||'[]'); } catch(_){ return []; } }
+function setCatalog(arr){ localStorage.setItem('elip_catalog', JSON.stringify(arr)); }
+function ensureCatalog(){ if(getCatalog().length===0){ setCatalog(DEFAULT_CATALOG); } }
+function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip_current')||'null'); } catch(_){ return null; } }
+function setCurrent(obj){ localStorage.setItem('elip_current', JSON.stringify(obj)); }
+
+function renderCatalog(filter=""){
+  const list=qs('#catalogList'); list.innerHTML='';
+  const rows=getCatalog().filter(x=> (x.code+x.desc).toLowerCase().includes(filter.toLowerCase()));
+  if(rows.length===0){ list.innerHTML=`<li class="list-group-item text-muted">Nessuna voce…</li>`; return; }
+  rows.forEach(x=>{
+    const li=document.createElement('li');
+    li.className='list-group-item d-flex align-items-center justify-content-between';
+    li.innerHTML=`<div><span class="badge-pill me-2">${x.code}</span>${x.desc}</div><div class="text-muted">${EURO(x.price)}</div>`;
+    li.addEventListener('click', ()=> addLineFromCatalog(x));
+    list.appendChild(li);
   });
 }
 
-function computeOverallProgress(rec){
-  const sel=rec.rows.filter(r=>r.flag); if(sel.length===0) return 0;
-  const comp=sel.filter(r=>r.progress&&r.progress.stato==='COMPLETATA').length;
-  return Math.round((comp/sel.length)*100);
+function addLineFromCatalog(x){
+  const cur=getOrBootstrap();
+  cur.lines.push({ code:x.code, desc:x.desc, qty:1, price:x.price });
+  setCurrent(cur);
+  renderLines(); recalc();
 }
-function updateProgressBadge(rec){
-  const badge=qs('#progressBadge'); const pct=computeOverallProgress(rec);
-  badge.textContent=`Avanzamento: ${pct}%`; badge.className='badge';
-  if(rec.stato==='CHIUSO'){ badge.classList.add('bg-success'); badge.textContent='Chiuso (100%)'; return; }
-  if(pct<=50){ badge.classList.add('bg-warning','text-dark'); }
-  else if(pct<=99){ badge.classList.add('bg-orange'); }
-  else { badge.classList.add('bg-success'); }
+
+function addCustomLine(){
+  const cur=getOrBootstrap();
+  cur.lines.push({ code:'', desc:'', qty:1, price:0 });
+  setCurrent(cur); renderLines(); recalc();
+}
+
+function getOrBootstrap(){
+  let cur=getCurrent();
+  if(!cur){ cur={ id:newId(), createdAt:new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', ivaPerc:22, scontoPerc:0, note:'', lines:[] }; setCurrent(cur); }
+  return cur;
+}
+
+function renderLines(){
+  const body=qs('#linesBody'); const cur=getOrBootstrap(); body.innerHTML='';
+  cur.lines.forEach((r,idx)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td><input class="form-control form-control-sm line-code" data-idx="${idx}" value="${r.code||''}"></td>
+      <td><input class="form-control form-control-sm line-desc" data-idx="${idx}" value="${r.desc||''}" placeholder="Descrizione…"></td>
+      <td><input type="number" min="0" step="1" class="form-control form-control-sm text-end line-qty" data-idx="${idx}" value="${r.qty||1}"></td>
+      <td><input type="number" min="0" step="0.01" class="form-control form-control-sm text-end line-price" data-idx="${idx}" value="${r.price||0}"></td>
+      <td class="text-end" id="lineTot${idx}">€ 0,00</td>
+      <td><button class="btn btn-sm btn-outline-danger" data-del="${idx}">✕</button></td>`;
+    body.appendChild(tr);
+  });
+  // bind
+  body.addEventListener('input', onLineEdit);
+  body.addEventListener('click', onLineDelete);
+}
+
+function onLineEdit(e){
+  const cur=getOrBootstrap();
+  if(e.target.matches('.line-code')){ cur.lines[e.target.dataset.idx].code = e.target.value; }
+  if(e.target.matches('.line-desc')){ cur.lines[e.target.dataset.idx].desc = e.target.value; }
+  if(e.target.matches('.line-qty')){ cur.lines[e.target.dataset.idx].qty = parseFloat(e.target.value)||0; }
+  if(e.target.matches('.line-price')){ cur.lines[e.target.dataset.idx].price = parseFloat(e.target.value)||0; }
+  setCurrent(cur); recalc();
+}
+function onLineDelete(e){
+  const btn=e.target.closest('button[data-del]'); if(!btn) return;
+  const idx=+btn.getAttribute('data-del');
+  const cur=getOrBootstrap(); cur.lines.splice(idx,1); setCurrent(cur); renderLines(); recalc();
 }
 
 function recalc(){
-  let subtotal=0;
-  document.querySelectorAll('.item-price').forEach(inp=>{
-    if(!inp.disabled){ subtotal+=(parseFloat(String(inp.value).replace(',','.'))||0); }
+  const cur=getOrBootstrap();
+  // read header fields
+  cur.cliente = qs('#cliente').value.trim();
+  cur.articolo = qs('#articolo').value.trim();
+  cur.ddt = qs('#ddt').value.trim();
+  cur.telefono = qs('#telefono').value.trim();
+  cur.email = qs('#email').value.trim();
+  cur.ivaPerc = parseFloat(qs('#ivaPerc').value)||22;
+  cur.scontoPerc = Math.min(100, Math.max(0, parseFloat(qs('#scontoPerc').value)||0));
+  cur.note = qs('#note').value;
+  // line totals
+  let imponibile=0;
+  cur.lines.forEach((r,i)=>{
+    const lt=(r.qty||0)*(r.price||0);
+    imponibile += lt;
+    const cell=qs('#lineTot'+i); if(cell) cell.textContent = EURO(lt);
   });
-  const vat=subtotal*0.22;
-  qs('#subtot').textContent=EURO(subtotal);
-  qs('#iva').textContent=EURO(vat);
-  qs('#totale').textContent=EURO(subtotal+vat);
-  updateProgressBadge(collectForm());
+  const scontoVal = imponibile * (cur.scontoPerc/100);
+  const afterSconto = imponibile - scontoVal;
+  const ivaVal = afterSconto * (cur.ivaPerc/100);
+  const total = afterSconto + ivaVal;
+  // render totals
+  qs('#imponibile').textContent = EURO(imponibile);
+  qs('#scontoVal').textContent = EURO(scontoVal);
+  qs('#subtot').textContent = EURO(afterSconto);
+  qs('#iva').textContent = EURO(ivaVal);
+  qs('#totale').textContent = EURO(total);
+  qs('#ivaLabel').textContent = String(cur.ivaPerc);
+  // persist
+  setCurrent(cur);
 }
 
-function bindRowEvents(){
-  // change on flags / price inputs
-  document.getElementById('workBody').addEventListener('change', (e)=>{
-    if(e.target.matches('.item-flag')){
-      const idx=+e.target.dataset.idx;
-      const price=document.querySelector(`.item-price[data-idx="${idx}"]`);
-      if(price) price.disabled=!e.target.checked;
-      saveDraft(); recalc();
-    }
-  });
-  document.getElementById('workBody').addEventListener('input', (e)=>{
-    if(e.target.matches('.item-price')){ recalc(); saveDraft(); }
-  });
-  // open progress modal
-  document.getElementById('workBody').addEventListener('click', (e)=>{
-    const btn=e.target.closest('.btnProgress'); if(!btn) return;
-    const idx=+btn.dataset.idx;
-    const chk=document.querySelector(`.item-flag[data-idx="${idx}"]`);
-    if(chk && !chk.checked){ chk.checked=true; const price=document.querySelector(`.item-price[data-idx="${idx}"]`); if(price) price.disabled=false; }
-    openProgressModal(idx);
-  });
+function fillForm(){
+  const cur=getOrBootstrap();
+  qs('#quoteId').textContent = cur.id;
+  ['cliente','articolo','ddt','telefono','email','note'].forEach(id=> qs('#'+id).value = cur[id]||'');
+  qs('#ivaPerc').value = cur.ivaPerc ?? 22;
+  qs('#scontoPerc').value = cur.scontoPerc ?? 0;
 }
 
-function loadDraft(){
-  const rec=getCurrent(); if(!rec) return;
-  ['cliente','articolo','ddt','telefono','email','note','inviatoData','operatoreInvio','operatoreLavorazioni','consegnaData']
-    .forEach(id=>{ const el=qs('#'+id); if(el) el.value=rec[id]||''; });
-  qs('#stato').value=rec['stato']||'DA_INVIARE';
-  setReadOnly(rec.stato==='CHIUSO'); updateProgressBadge(rec);
+function newQuote(){
+  localStorage.removeItem('elip_current'); 
+  const cur=getOrBootstrap();
+  qs('#quoteId').textContent = cur.id;
+  renderLines(); fillForm(); recalc();
 }
 
-function collectForm(){
-  const old=getCurrent()||{};
-  const rows=WORK_ITEMS.map((w,i)=>{
-    const flag=qs(`.item-flag[data-idx="${i}"]`)?.checked||false;
-    const price=qs(`.item-price[data-idx="${i}"]`)?.value||'';
-    const oldp=(old.rows&&old.rows[i])?old.rows[i].progress:null;
-    return {code:w.code,desc:w.desc,flag,price,progress:oldp};
-  });
-  const subtotal=[...document.querySelectorAll('.item-price')]
-    .reduce((s,i)=>s+(i.disabled?0:(parseFloat(String(i.value).replace(',','.'))||0)),0);
-  const vat=subtotal*0.22, total=subtotal+vat;
-  return {
-    id: qs('#sheetId').textContent || newSheetId(),
-    createdAt: old.createdAt || new Date().toISOString(),
-    cliente: qs('#cliente').value.trim(),
-    articolo: qs('#articolo').value.trim(),
-    ddt: qs('#ddt').value.trim(),
-    telefono: qs('#telefono').value.trim(),
-    email: qs('#email').value.trim(),
-    rows, subtotal, vat, total,
-    note: qs('#note').value,
-    stato: qs('#stato').value,
-    inviatoData: qs('#inviatoData').value,
-    operatoreInvio: qs('#operatoreInvio').value.trim(),
-    operatoreLavorazioni: qs('#operatoreLavorazioni').value.trim(),
-    consegnaData: qs('#consegnaData').value
+function saveQuote(){
+  const cur=getOrBootstrap();
+  const arr=JSON.parse(localStorage.getItem('elip_archive')||'[]');
+  const i=arr.findIndex(x=>x.id===cur.id); if(i>=0) arr[i]=cur; else arr.unshift(cur);
+  localStorage.setItem('elip_archive', JSON.stringify(arr));
+  alert('Preventivo salvato in Archivio.');
+}
+
+function exportJSON(){
+  const cur=getOrBootstrap();
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(cur,null,2)],{type:'application/json'}));
+  a.download=cur.id+'.json'; a.click();
+}
+function importJSON(file){
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{ const obj=JSON.parse(reader.result); localStorage.setItem('elip_current', JSON.stringify(obj)); }catch(_){ alert('JSON non valido'); return; }
+    renderLines(); fillForm(); recalc();
   };
-}
-function saveDraft(){
-  const rec=collectForm(); setCurrent(rec);
-  rec.rows.forEach((r,i)=>{
-    const slot=document.querySelectorAll('#workBody tr')[i]?.querySelector('td:last-child div.mt-1');
-    if(slot) slot.innerHTML=progressBadge(r.progress);
-  });
-  updateProgressBadge(rec);
+  reader.readAsText(file);
 }
 
-function pushToArchive(rec){
-  const arr=JSON.parse(localStorage.getItem('preventivo_elip_archive')||'[]');
-  const idx=arr.findIndex(x=>x.id===rec.id); if(idx>=0) arr[idx]=rec; else arr.unshift(rec);
-  localStorage.setItem('preventivo_elip_archive', JSON.stringify(arr));
+function exportCatalog(){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(getCatalog(),null,2)],{type:'application/json'}));
+  a.download='catalogo-elip.json'; a.click();
+}
+function importCatalog(file){
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{ const arr=JSON.parse(reader.result); if(!Array.isArray(arr)) throw new Error(); setCatalog(arr); renderCatalog(qs('#catalogSearch').value||''); }
+    catch(_){ alert('Catalogo JSON non valido'); }
+  };
+  reader.readAsText(file);
 }
 
-async function addLogo(doc,pad){
-  try{
-    const img=new Image(); img.src='logo-elip.jpg'; await img.decode();
-    const c=document.createElement('canvas'); const ratio=420/img.width;
-    c.width=420; c.height=Math.round(img.height*ratio);
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    doc.addImage(c.toDataURL('image/jpeg',0.92),'JPEG',pad,34,180,60);
-  }catch(_){}
+function editCatalog(){
+  const arr=getCatalog();
+  const text=prompt('Modifica catalogo (JSON):', JSON.stringify(arr,null,2));
+  if(!text) return;
+  try{ const parsed=JSON.parse(text); if(!Array.isArray(parsed)) throw 0; setCatalog(parsed); renderCatalog(qs('#catalogSearch').value||''); }
+  catch(_){ alert('JSON non valido'); }
 }
-function pdfHeader(doc,pad,rec){
-  doc.setFontSize(16); doc.text('Scheda Lavorazioni', pad, 110);
+
+/* --------- PDF ---------- */
+async function addHeader(doc,pad,cur){
+  doc.setFontSize(16); doc.text('Preventivo', pad, 80);
   doc.setFontSize(10); const dateIT=new Date().toLocaleDateString('it-IT');
-  doc.text('Data: '+dateIT+'  •  N°: '+rec.id, pad, 126);
+  doc.text(`Data: ${dateIT}  •  N°: ${cur.id}`, pad, 96);
   doc.setFontSize(11);
-  doc.text('Cliente: '+(rec.cliente||'-'), pad, 146);
-  doc.text('Articolo: '+(rec.articolo||'-'), pad, 162);
-  doc.text('DDT: '+(rec.ddt||'-'), pad, 178);
-  doc.text('Telefono: '+(rec.telefono||'-')+'   Email: '+(rec.email||'-'), pad, 194);
+  doc.text('Cliente: '+(cur.cliente||'-'), pad, 116);
+  doc.text('Articolo: '+(cur.articolo||'-'), pad, 132);
+  doc.text('DDT: '+(cur.ddt||'-'), pad, 148);
+  doc.text(`Telefono: ${cur.telefono||'-'}   Email: ${cur.email||'-'}`, pad, 164);
 }
-function pdfFooter(doc){ doc.setFontSize(8); doc.text('Documento generato con Preventivi ELIP', 40, 820); }
-function pdfStato(doc,pad,y,rec){
-  const map={DA_INVIARE:'Da inviare',INVIATO:'Inviato',CONFERMATO:'Confermato',CHIUSO:'Chiuso'};
-  doc.setFontSize(11); doc.text('Stato preventivo', pad, y); y+=10;
+function addTotals(doc,pad,cur,startY){
+  let y=startY;
+  doc.setFontSize(11);
+  doc.text('Riepilogo', pad, y); y+=10;
+  const imponibile = cur.lines.reduce((s,r)=>s+(r.qty||0)*(r.price||0),0);
+  const sconto = imponibile * ((cur.scontoPerc||0)/100);
+  const afterSconto = imponibile - sconto;
+  const iva = afterSconto * ((cur.ivaPerc||22)/100);
+  const totale = afterSconto + iva;
   doc.setFontSize(10);
-  doc.text('Stato: '+(map[rec.stato]||'-'), pad, y); y+=12;
-  if(rec.inviatoData){ doc.text('Inviato il: '+rec.inviatoData, pad, y); y+=12; }
-  if(rec.operatoreInvio){ doc.text('Operatore invio: '+rec.operatoreInvio, pad, y); y+=12; }
-  if(rec.operatoreLavorazioni){ doc.text('Operatore lavorazioni: '+rec.operatoreLavorazioni, pad, y); y+=12; }
-  if(rec.consegnaData){ doc.text('Data presunta consegna: '+rec.consegnaData, pad, y); y+=12; }
-  return y;
+  doc.text('Imponibile: '+EURO(imponibile), pad, y); y+=12;
+  if ((cur.scontoPerc||0)>0){ doc.text('Sconto: '+EURO(sconto), pad, y); y+=12; }
+  doc.text('Subtotale: '+EURO(afterSconto), pad, y); y+=12;
+  doc.text(`IVA (${cur.ivaPerc||22}%): `+EURO(iva), pad, y); y+=14;
+  doc.setFontSize(12); doc.text('TOTALE: '+EURO(totale), pad, y);
+  return y+16;
 }
-
-async function generatePDFDetailed(){
+async function pdfDettaglio(){
   const { jsPDF } = window.jspdf||{}; if(!jsPDF){ alert('Libreria PDF non caricata.'); return; }
-  const rec=collectForm(), doc=new jsPDF({unit:'pt',format:'a4'}), pad=40;
-  await addLogo(doc,pad); pdfHeader(doc,pad,rec);
-  const rows=rec.rows.filter(r=>r.flag).map(r=>[r.code,r.desc,EURO(parseFloat(String(r.price||'0').replace(',','.'))||0)]);
-  if(rows.length===0) rows.push(['—','Nessuna voce selezionata','€ 0,00']);
-  doc.autoTable({startY:210,head:[['Cod','Descrizione lavori','Importo']],body:rows,
-    styles:{fontSize:10,cellPadding:5},headStyles:{fillColor:[224,123,57]},columnStyles:{0:{cellWidth:50},1:{cellWidth:360},2:{cellWidth:100,halign:'right'}}});
+  const cur=getOrBootstrap(), doc=new jsPDF({unit:'pt',format:'a4'}), pad=40;
+  await addHeader(doc,pad,cur);
+  const rows=cur.lines.length? cur.lines.map(r=>[r.code||'', r.desc||'', String(r.qty||0), EURO(r.price||0), EURO((r.qty||0)*(r.price||0))]) : [['','','0','€ 0,00','€ 0,00']];
+  doc.autoTable({startY:190, head:[['Cod','Descrizione','Q.tà','Prezzo','Totale']], body:rows, styles:{fontSize:10,cellPadding:5}, headStyles:{fillColor:[13,110,253]}, columnStyles:{0:{cellWidth:50},1:{cellWidth:260},2:{cellWidth:60,halign:'right'},3:{cellWidth:80,halign:'right'},4:{cellWidth:90,halign:'right'}}});
   let y=doc.lastAutoTable.finalY+12;
-  const note=(rec.note||'').trim(); if(note){ doc.setFontSize(11); doc.text('NOTE', pad, y); y+=8; doc.setFontSize(10); const w=doc.splitTextToSize(note,455); doc.text(w,pad,y); y+=(w.length*12)+6; }
-  doc.setFontSize(11); doc.text('Riepilogo', pad, y); y+=8;
-  doc.setFontSize(10); doc.text('Subtotale: '+EURO(rec.subtotal), pad, y); y+=14;
-  doc.text('IVA (22%): '+EURO(rec.vat), pad, y); y+=18;
-  doc.setFontSize(12); doc.text('TOTALE: '+EURO(rec.total), pad, y); y+=22;
-  y=pdfStato(doc,pad,y+8,rec); pdfFooter(doc);
-  const url=URL.createObjectURL(doc.output('blob')); const a=qs('#btnScarica'); a.href=url; a.download='preventivo-elip-dettaglio.pdf'; a.classList.remove('d-none'); a.click();
+  const note=(cur.note||'').trim(); if(note){ doc.setFontSize(11); doc.text('NOTE', pad, y); y+=10; doc.setFontSize(10); const w=doc.splitTextToSize(note,455); doc.text(w, pad, y); y+=w.length*12+6; }
+  y=addTotals(doc,pad,cur,y+4);
+  const url=URL.createObjectURL(doc.output('blob')); const a=qs('#btnDownload'); a.href=url; a.download=cur.id+'-dettaglio.pdf'; a.classList.remove('d-none'); a.click();
 }
-async function generatePDFTotalOnly(){
+async function pdfTotale(){
   const { jsPDF } = window.jspdf||{}; if(!jsPDF){ alert('Libreria PDF non caricata.'); return; }
-  const rec=collectForm(), doc=new jsPDF({unit:'pt',format:'a4'}), pad=40;
-  await addLogo(doc,pad); pdfHeader(doc,pad,rec);
-  const rows=rec.rows.filter(r=>r.flag).map(r=>[r.code,r.desc]);
-  if(rows.length===0) rows.push(['—','Nessuna voce selezionata']);
-  doc.autoTable({startY:210,head:[['Cod','Descrizione lavori inclusi']],body:rows,
-    styles:{fontSize:10,cellPadding:5},headStyles:{fillColor:[224,123,57]},columnStyles:{0:{cellWidth:60},1:{cellWidth:450}}});
+  const cur=getOrBootstrap(), doc=new jsPDF({unit:'pt',format:'a4'}), pad=40;
+  await addHeader(doc,pad,cur);
+  const rows=cur.lines.length? cur.lines.map(r=>[r.code||'', r.desc||'']) : [['','Nessuna voce']];
+  doc.autoTable({startY:190, head:[['Cod','Descrizione incluse']], body:rows, styles:{fontSize:10,cellPadding:5}, headStyles:{fillColor:[13,110,253]}, columnStyles:{0:{cellWidth:60},1:{cellWidth:380}}});
   let y=doc.lastAutoTable.finalY+12;
-  const note=(rec.note||'').trim(); if(note){ doc.setFontSize(11); doc.text('NOTE', pad, y); y+=8; doc.setFontSize(10); const w=doc.splitTextToSize(note,455); doc.text(w,pad,y); y+=(w.length*12)+6; }
-  doc.setFontSize(12); doc.text('TOTALE: '+EURO(rec.total), pad, y); y+=22;
-  y=pdfStato(doc,pad,y+8,rec); pdfFooter(doc);
-  const url=URL.createObjectURL(doc.output('blob')); const a=qs('#btnScarica'); a.href=url; a.download='preventivo-elip-totale.pdf'; a.classList.remove('d-none'); a.click();
+  const note=(cur.note||'').trim(); if(note){ doc.setFontSize(11); doc.text('NOTE', pad, y); y+=10; doc.setFontSize(10); const w=doc.splitTextToSize(note,455); doc.text(w, pad, y); y+=w.length*12+6; }
+  y=addTotals(doc,pad,cur,y+4);
+  const url=URL.createObjectURL(doc.output('blob')); const a=qs('#btnDownload'); a.href=url; a.download=cur.id+'-totale.pdf'; a.classList.remove('d-none'); a.click();
 }
 
-function prepareMail(){
-  const rec=collectForm();
-  const subject=encodeURIComponent('Preventivo ELIP - '+(rec.cliente||''));
-  const body=encodeURIComponent('Buongiorno,\n\nIn allegato il preventivo in PDF.\nCliente: '+(rec.cliente||'-')+'\nArticolo: '+(rec.articolo||'-')+'\nTotale: '+EURO(rec.total)+'\n\nCordiali saluti.');
-  window.location.href='mailto:'+(rec.email||'')+'?subject='+subject+'&body='+body;
+/* --------- Share ---------- */
+function shareMail(){
+  const cur=getOrBootstrap();
+  const subject=encodeURIComponent('Preventivo '+cur.id+' - '+(cur.cliente||''));
+  const lines = cur.lines.map(r=>`- ${r.code||''} ${r.desc||''} x${r.qty||0}`).join('%0A');
+  const body=encodeURIComponent(`Buongiorno,%0A%0Ain allegato il preventivo.%0ACliente: ${cur.cliente||'-'}%0AArticolo: ${cur.articolo||'-'}%0ATotale: ${qs('#totale').textContent}%0A%0AVoci:%0A`)+lines;
+  window.location.href='mailto:'+(cur.email||'')+'?subject='+subject+'&body='+body;
+}
+function shareWA(){
+  const cur=getOrBootstrap();
+  const lines = cur.lines.map(r=>`• ${r.code||''} ${r.desc||''} x${r.qty||0}`).join('%0A');
+  const msg = encodeURIComponent(`Preventivo ${cur.id}%0ACliente: ${cur.cliente||'-'}%0ATotale: ${qs('#totale').textContent}%0A%0AVoci:%0A`)+lines;
+  window.open('https://wa.me/?text='+msg, '_blank');
 }
 
-function renderArchive(){
-  const arr=JSON.parse(localStorage.getItem('preventivo_elip_archive')||'[]');
-  const fStato=qs('#filterStato').value;
-  const fQuery=(qs('#filterQuery').value||'').toLowerCase();
-  const body=qs('#archBody'); body.innerHTML='';
-  const now=new Date(); const in7=new Date(now.getTime()+7*24*60*60*1000);
-  arr.filter(r=>{
-    const k=(r.cliente+' '+r.articolo+' '+(r.ddt||'')).toLowerCase();
-    return (!fStato||r.stato===fStato)&&(!fQuery||k.includes(fQuery));
-  }).forEach(rec=>{
-    const tr=document.createElement('tr');
-    if(rec.stato==='CONFERMATO'&&rec.consegnaData){
-      const d=new Date(rec.consegnaData+'T00:00:00'); if(d>=now && d<=in7) tr.classList.add('alert-row');
-    }
-    const pct=(rec.stato==='CHIUSO')?100:computeOverallProgress(rec);
-    const semaf=(rec.stato==='CHIUSO')?'<span class="badge bg-success">verde</span>'
-        : (pct>50&&pct<100)?'<span class="badge bg-orange">arancione</span>'
-        : '<span class="badge bg-warning text-dark">giallo</span>';
-    const dateIt=new Date(rec.createdAt).toLocaleDateString('it-IT');
-    tr.innerHTML=`
-      <td>${rec.id}</td><td>${dateIt}</td><td>${rec.cliente||''}</td>
-      <td>${rec.articolo||''}</td><td>${rec.ddt||''}</td><td>${rec.stato||''}</td>
-      <td>${rec.consegnaData||''}</td><td>${semaf} ${pct}%</td><td>${EURO(rec.total||0)}</td>
-      <td><button class="btn btn-sm btn-outline-primary" data-open="${rec.id}">Apri</button></td>`;
-    body.appendChild(tr);
-  });
-  body.querySelectorAll('button[data-open]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const id=btn.getAttribute('data-open');
-      const arr=JSON.parse(localStorage.getItem('preventivo_elip_archive')||'[]');
-      const rec=arr.find(x=>x.id===id); if(!rec) return;
-      localStorage.setItem('preventivo_elip_current', JSON.stringify(rec));
-      document.getElementById('tab-new').click();
-      injectRows(); bindRowEvents(); loadDraft(); recalc();
-      qs('#sheetId').textContent=rec.id;
-      window.scrollTo({top:0,behavior:'smooth'});
-    });
+/* --------- Theme ---------- */
+function toggleTheme(){
+  const html=document.documentElement;
+  const curr=html.getAttribute('data-theme')==='dark'?'dark':'light';
+  const next= curr==='dark'?'light':'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('elip_theme', next);
+}
+function restoreTheme(){ const t=localStorage.getItem('elip_theme')||'light'; document.documentElement.setAttribute('data-theme',t); }
+
+/* --------- Init ---------- */
+function bindHeader(){
+  qs('#btnDark').addEventListener('click', toggleTheme);
+  qs('#btnNew').addEventListener('click', newQuote);
+  qs('#btnSave').addEventListener('click', saveQuote);
+  qs('#btnPDFDett').addEventListener('click', pdfDettaglio);
+  qs('#btnPDFTot').addEventListener('click', pdfTotale);
+  qs('#btnShareMail').addEventListener('click', shareMail);
+  qs('#btnShareWA').addEventListener('click', shareWA);
+  qs('#btnExport').addEventListener('click', exportJSON);
+  qs('#btnImport').addEventListener('click', ()=> qs('#jsonImport').click());
+  qs('#jsonImport').addEventListener('change', e=> e.target.files[0] && importJSON(e.target.files[0]));
+  // Recalc on header field changes
+  ['cliente','articolo','ddt','telefono','email','note','ivaPerc','scontoPerc'].forEach(id=>{
+    qs('#'+id).addEventListener('input', recalc);
+    qs('#'+id).addEventListener('change', recalc);
   });
 }
-
-/* ----- Custom Modal helpers ----- */
-function pmShow(){ qs('#pmWrap').classList.add('show'); qs('#pmWrap').setAttribute('aria-hidden','false'); }
-function pmHide(){ qs('#pmWrap').classList.remove('show'); qs('#pmWrap').setAttribute('aria-hidden','true'); }
-
-function openProgressModal(idx){
-  currentProgressIdx=idx;
-  const rec=getCurrent()||collectForm();
-  const r=rec.rows[idx]||{}; const p=r.progress||{};
-  qs('#pmCode').textContent='('+(r.code||'')+')';
-  qs('#pmStato').value=p.stato||'DA_ESEGUIRE';
-  qs('#pmReparto').value=p.reparto||'';
-  qs('#pmOperatore').value=p.operatore||'';
-  qs('#pmPresa').value=p.presa||'';
-  qs('#pmConcluso').value=p.concluso||'';
-  pmShow();
-}
-function saveProgressFromModal(){
-  if(currentProgressIdx===null) return;
-  const rec=collectForm();
-  const r=rec.rows[currentProgressIdx];
-  r.progress={
-    stato: qs('#pmStato').value,
-    reparto: qs('#pmReparto').value,
-    operatore: qs('#pmOperatore').value.trim(),
-    presa: qs('#pmPresa').value,
-    concluso: qs('#pmConcluso').value
-  };
-  setCurrent(rec);
-  injectRows(); bindRowEvents(); recalc();
-  pmHide();
-}
-
-function setReadOnly(lock){
-  const form=qs('#jobForm');
-  if(lock) form.classList.add('readonly'); else form.classList.remove('readonly');
-}
-
-function bindTopButtons(){
-  qs('#btnNuova').addEventListener('click', ()=>{
-    if(confirm('Iniziare una nuova scheda? I dati correnti verranno azzerati.')){
-      localStorage.removeItem('preventivo_elip_current'); location.reload();
-    }
-  });
-  qs('#btnSalvaBozza').addEventListener('click', ()=>{
-    saveDraft();
-    const a=document.createElement('a');
-    const data=localStorage.getItem('preventivo_elip_current')||'{}';
-    a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));
-    a.download='preventivo-elip-bozza.json'; a.click();
-  });
-  qs('#btnPDFDett').addEventListener('click', generatePDFDetailed);
-  qs('#btnPDFTot').addEventListener('click', generatePDFTotalOnly);
-  qs('#btnMail').addEventListener('click', prepareMail);
-  qs('#btnArchivia').addEventListener('click', ()=>{ const rec=collectForm(); pushToArchive(rec); alert('Preventivo archiviato.'); });
-  qs('#btnReloadArch').addEventListener('click', renderArchive);
-  qs('#filterStato').addEventListener('change', renderArchive);
-  qs('#filterQuery').addEventListener('input', renderArchive);
-  // modal buttons
-  qs('#pmSave').addEventListener('click', saveProgressFromModal);
-  qs('#pmClose').addEventListener('click', pmHide);
-  // stato lock
-  qs('#stato').addEventListener('change', ()=>{ const rec=collectForm(); setCurrent(rec); setReadOnly(rec.stato==='CHIUSO'); updateProgressBadge(rec); });
+function bindCatalog(){
+  qs('#catalogSearch').addEventListener('input', e=> renderCatalog(e.target.value));
+  qs('#btnAddCustom').addEventListener('click', addCustomLine);
+  qs('#btnEditCatalog').addEventListener('click', editCatalog);
+  qs('#btnExportCatalog').addEventListener('click', exportCatalog);
+  qs('#btnImportCatalog').addEventListener('click', ()=> qs('#catalogImport').click());
+  qs('#catalogImport').addEventListener('change', e=> e.target.files[0] && importCatalog(e.target.files[0]));
 }
 
 function init(){
-  injectRows(); bindRowEvents(); bindTopButtons(); loadDraft(); recalc();
-  if(!qs('#sheetId').textContent) qs('#sheetId').textContent=newSheetId();
-  renderArchive();
+  restoreTheme();
+  ensureCatalog();
+  renderCatalog();
+  renderLines();
+  fillForm();
+  recalc();
+  bindHeader();
+  bindCatalog();
+  // first id
+  const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id;
 }
 document.addEventListener('DOMContentLoaded', init);
