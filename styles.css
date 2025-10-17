@@ -1,5 +1,4 @@
 :root{
-  --brand-gray:#505050; --brand-orange:#e07b39; --brand-green:#1e8b3d; --brand-red:#c63c3c;
   --brand-bg:#faf9f7; --brand-border:#e8e4df;
 }
 body{background:var(--brand-bg); padding-bottom:72px;}
@@ -10,9 +9,6 @@ body{background:var(--brand-bg); padding-bottom:72px;}
 .table td, .table th { vertical-align: middle; }
 .input-group-text{min-width:44px; justify-content:center;}
 .card-header.bg-light{font-weight:600;}
-.alert-row{background: #fff7e6 !important;}
+.alert-row{background:#fff7e6!important;}
 .progress-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .dot-gray{background:#adb5bd}.dot-blue{background:#0d6efd}.dot-green{background:#198754}
-@media (max-width: 540px){
-  #workTable th:nth-child(2), #workTable td:nth-child(2){ font-size: .95rem; }
-}
