@@ -1,0 +1,17 @@
+/* ELIP styling */
+:root{
+  --brand-gray:#505050; --brand-orange:#e07b39; --brand-green:#1e8b3d; --brand-red:#c63c3c;
+  --brand-bg:#faf9f7; --brand-border:#e8e4df;
+}
+body{background:var(--brand-bg); padding-bottom:72px;}
+.header-bar{border-bottom:1px solid var(--brand-border); background:#fff;}
+.brand-logo{height:48px; object-fit:contain;}
+.brand-title{font-weight:800; letter-spacing:.3px;}
+.footer-bar{position:fixed; left:0; right:0; bottom:0; border-top:1px solid var(--brand-border); background:#fff;}
+.table td, .table th { vertical-align: middle; }
+.input-group-text{min-width:44px; justify-content:center;}
+.card-header.bg-light{font-weight:600;}
+.alert-row{background: #fff7e6 !important;}
+@media (max-width: 540px){
+  #workTable th:nth-child(2), #workTable td:nth-child(2){ font-size: .95rem; }
+}
