@@ -1,6 +1,6 @@
 :root{
   --brand-bg:#faf9f7; --brand-border:#e8e4df;
-  --orange:#fd7e14;
+  --orange:#fd7e14; --overlay: rgba(0,0,0,.55); --card:#fff;
 }
 body{background:var(--brand-bg); padding-bottom:72px;}
 .header-bar{border-bottom:1px solid var(--brand-border); background:#fff;}
@@ -18,5 +18,12 @@ body{background:var(--brand-bg); padding-bottom:72px;}
 .readonly input, .readonly textarea, .readonly select, .readonly button.btn{
   pointer-events:none; opacity:.6;
 }
-/* keep PDF buttons clickable even in readonly */
-.readonly #btnPDFDett, .readonly #btnPDFTot, .readonly #btnMail, .readonly #btnScarica { pointer-events:auto; opacity:1;}
+.readonly #btnPDFDett, .readonly #btnPDFTot, .readonly #btnMail, .readonly #btnScarica{ pointer-events:auto; opacity:1; }
+
+/* Custom modal */
+.pm-wrap{position:fixed; inset:0; background:var(--overlay); display:none; z-index:1050; padding:20px; align-items:center; justify-content:center;}
+.pm-wrap.show{display:flex;}
+.pm-dialog{background:var(--card); border-radius:12px; width:min(680px, 96vw); max-height:90vh; overflow:auto; box-shadow:0 10px 30px rgba(0,0,0,.2);}
+.pm-header{display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--brand-border);}
+.pm-body{padding:16px;}
+.pm-footer{padding:12px 16px; border-top:1px solid var(--brand-border); display:flex; justify-content:flex-end; gap:8px;}

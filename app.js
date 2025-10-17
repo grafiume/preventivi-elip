@@ -1,4 +1,4 @@
-// v4.3 – event delegation for 'Avanzamento' + auto-flag + robust modal
+// v4.4.1 – fix 'semaf' use & custom modal (no Bootstrap JS)
 const WORK_ITEMS=[
   {code:"05",desc:"Smontaggio completo del motore sistematico"},
   {code:"29",desc:"Lavaggio componenti, e trattamento termico avvolgimenti"},
@@ -21,7 +21,7 @@ const WORK_ITEMS=[
 ];
 const EURO=n=>n.toLocaleString('it-IT',{style:'currency',currency:'EUR'});
 const qs=s=>document.querySelector(s);
-let progressModal,currentProgressIdx=null;
+let currentProgressIdx=null;
 
 function newSheetId(){ const d=new Date(); return `ELIP-${String(d.getFullYear()).slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;}
 function getCurrent(){ try{return JSON.parse(localStorage.getItem('preventivo_elip_current')||'null')}catch(_){return null} }
@@ -78,23 +78,22 @@ function recalc(){
 }
 
 function bindRowEvents(){
-  // toggle enable for price when checkbox changes
+  // change on flags / price inputs
   document.getElementById('workBody').addEventListener('change', (e)=>{
     if(e.target.matches('.item-flag')){
       const idx=+e.target.dataset.idx;
       const price=document.querySelector(`.item-price[data-idx="${idx}"]`);
-      price.disabled=!e.target.checked;
+      if(price) price.disabled=!e.target.checked;
       saveDraft(); recalc();
     }
   });
   document.getElementById('workBody').addEventListener('input', (e)=>{
     if(e.target.matches('.item-price')){ recalc(); saveDraft(); }
   });
-  // EVENT DELEGATION for Avanzamento button
+  // open progress modal
   document.getElementById('workBody').addEventListener('click', (e)=>{
     const btn=e.target.closest('.btnProgress'); if(!btn) return;
     const idx=+btn.dataset.idx;
-    // auto-flag row if not already
     const chk=document.querySelector(`.item-flag[data-idx="${idx}"]`);
     if(chk && !chk.checked){ chk.checked=true; const price=document.querySelector(`.item-price[data-idx="${idx}"]`); if(price) price.disabled=false; }
     openProgressModal(idx);
@@ -139,7 +138,6 @@ function collectForm(){
 }
 function saveDraft(){
   const rec=collectForm(); setCurrent(rec);
-  // refresh badges
   rec.rows.forEach((r,i)=>{
     const slot=document.querySelectorAll('#workBody tr')[i]?.querySelector('td:last-child div.mt-1');
     if(slot) slot.innerHTML=progressBadge(r.progress);
@@ -239,14 +237,14 @@ function renderArchive(){
       const d=new Date(rec.consegnaData+'T00:00:00'); if(d>=now && d<=in7) tr.classList.add('alert-row');
     }
     const pct=(rec.stato==='CHIUSO')?100:computeOverallProgress(rec);
-    let semaf= (rec.stato==='CHIUSO')?'<span class="badge bg-success">verde</span>'
+    const semaf=(rec.stato==='CHIUSO')?'<span class="badge bg-success">verde</span>'
         : (pct>50&&pct<100)?'<span class="badge bg-orange">arancione</span>'
         : '<span class="badge bg-warning text-dark">giallo</span>';
     const dateIt=new Date(rec.createdAt).toLocaleDateString('it-IT');
     tr.innerHTML=`
       <td>${rec.id}</td><td>${dateIt}</td><td>${rec.cliente||''}</td>
       <td>${rec.articolo||''}</td><td>${rec.ddt||''}</td><td>${rec.stato||''}</td>
-      <td>${rec.consegnaData||''}</td><td>${sema} ${pct}%</td><td>${EURO(rec.total||0)}</td>
+      <td>${rec.consegnaData||''}</td><td>${semaf} ${pct}%</td><td>${EURO(rec.total||0)}</td>
       <td><button class="btn btn-sm btn-outline-primary" data-open="${rec.id}">Apri</button></td>`;
     body.appendChild(tr);
   });
@@ -256,7 +254,7 @@ function renderArchive(){
       const arr=JSON.parse(localStorage.getItem('preventivo_elip_archive')||'[]');
       const rec=arr.find(x=>x.id===id); if(!rec) return;
       localStorage.setItem('preventivo_elip_current', JSON.stringify(rec));
-      new bootstrap.Tab(document.getElementById('tab-new')).show();
+      document.getElementById('tab-new').click();
       injectRows(); bindRowEvents(); loadDraft(); recalc();
       qs('#sheetId').textContent=rec.id;
       window.scrollTo({top:0,behavior:'smooth'});
@@ -264,8 +262,11 @@ function renderArchive(){
   });
 }
 
+/* ----- Custom Modal helpers ----- */
+function pmShow(){ qs('#pmWrap').classList.add('show'); qs('#pmWrap').setAttribute('aria-hidden','false'); }
+function pmHide(){ qs('#pmWrap').classList.remove('show'); qs('#pmWrap').setAttribute('aria-hidden','true'); }
+
 function openProgressModal(idx){
-  if(!progressModal){ progressModal=new bootstrap.Modal(document.getElementById('progressModal')); }
   currentProgressIdx=idx;
   const rec=getCurrent()||collectForm();
   const r=rec.rows[idx]||{}; const p=r.progress||{};
@@ -275,7 +276,7 @@ function openProgressModal(idx){
   qs('#pmOperatore').value=p.operatore||'';
   qs('#pmPresa').value=p.presa||'';
   qs('#pmConcluso').value=p.concluso||'';
-  progressModal.show();
+  pmShow();
 }
 function saveProgressFromModal(){
   if(currentProgressIdx===null) return;
@@ -290,7 +291,7 @@ function saveProgressFromModal(){
   };
   setCurrent(rec);
   injectRows(); bindRowEvents(); recalc();
-  progressModal.hide();
+  pmHide();
 }
 
 function setReadOnly(lock){
@@ -318,7 +319,10 @@ function bindTopButtons(){
   qs('#btnReloadArch').addEventListener('click', renderArchive);
   qs('#filterStato').addEventListener('change', renderArchive);
   qs('#filterQuery').addEventListener('input', renderArchive);
-  document.getElementById('pmSave').addEventListener('click', saveProgressFromModal);
+  // modal buttons
+  qs('#pmSave').addEventListener('click', saveProgressFromModal);
+  qs('#pmClose').addEventListener('click', pmHide);
+  // stato lock
   qs('#stato').addEventListener('change', ()=>{ const rec=collectForm(); setCurrent(rec); setReadOnly(rec.stato==='CHIUSO'); updateProgressBadge(rec); });
 }
 

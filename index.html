@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -152,10 +151,6 @@
             </div>
           </div>
         </div>
-
-        <p class="text-muted small mt-2">
-          Premi **📍 Avanzamento** (dopo o anche prima del flag) per impostare Reparto/Operatore/Date.
-        </p>
       </form>
     </div>
 
@@ -186,54 +181,52 @@
   </div>
 </main>
 
-<!-- Modal Avanzamento -->
-<div class="modal fade" id="progressModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Avanzamento lavorazione <span id="pmCode"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
-      </div>
-      <div class="modal-body">
-        <div class="row g-2">
-          <div class="col-md-6">
-            <label class="form-label">Stato</label>
-            <select id="pmStato" class="form-select">
-              <option value="DA_ESEGUIRE">Da eseguire</option>
-              <option value="IN_LAVORAZIONE">In lavorazione</option>
-              <option value="COMPLETATA">Completata</option>
-            </select>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Reparto</label>
-            <select id="pmReparto" class="form-select">
-              <option value="">—</option>
-              <option>Avvolgimento</option>
-              <option>Tornitura</option>
-              <option>Fresatura</option>
-              <option>Montaggio</option>
-              <option>Collaudo</option>
-              <option>Verniciatura</option>
-              <option>Altro</option>
-            </select>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Operatore</label>
-            <input id="pmOperatore" class="form-control" placeholder="Nome">
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Presa in carico</label>
-            <input id="pmPresa" type="date" class="form-control">
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Concluso</label>
-            <input id="pmConcluso" type="date" class="form-control">
-          </div>
+<!-- Custom Modal (senza Bootstrap JS) -->
+<div id="pmWrap" class="pm-wrap" aria-hidden="true">
+  <div class="pm-dialog">
+    <div class="pm-header">
+      <strong>Avanzamento lavorazione <span id="pmCode"></span></strong>
+      <button id="pmClose" class="btn btn-sm btn-outline-secondary" type="button">Chiudi</button>
+    </div>
+    <div class="pm-body">
+      <div class="row g-2">
+        <div class="col-md-6">
+          <label class="form-label">Stato</label>
+          <select id="pmStato" class="form-select">
+            <option value="DA_ESEGUIRE">Da eseguire</option>
+            <option value="IN_LAVORAZIONE">In lavorazione</option>
+            <option value="COMPLETATA">Completata</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Reparto</label>
+          <select id="pmReparto" class="form-select">
+            <option value="">—</option>
+            <option>Avvolgimento</option>
+            <option>Tornitura</option>
+            <option>Fresatura</option>
+            <option>Montaggio</option>
+            <option>Collaudo</option>
+            <option>Verniciatura</option>
+            <option>Altro</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Operatore</label>
+          <input id="pmOperatore" class="form-control" placeholder="Nome">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Presa in carico</label>
+          <input id="pmPresa" type="date" class="form-control">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Concluso</label>
+          <input id="pmConcluso" type="date" class="form-control">
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-primary" id="pmSave">Salva</button>
-      </div>
+    </div>
+    <div class="pm-footer">
+      <button id="pmSave" class="btn btn-primary" type="button">Salva</button>
     </div>
   </div>
 </div>
