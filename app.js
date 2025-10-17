@@ -1,4 +1,4 @@
-// v5.2 core logic
+// v5.3 — no XLS, operator/date inputs, progressive numbering, email text custom
 const EURO = n => n.toLocaleString('it-IT',{style:'currency',currency:'EUR'});
 const qs = s => document.querySelector(s);
 
@@ -23,19 +23,27 @@ const DEFAULT_CATALOG=[
   {code:"16",desc:"Ricambi vari"}
 ];
 
-function newId(){ const d=new Date(); return `ELP-${d.getFullYear().toString().slice(-2)}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`; }
-function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip52_catalog')||'[]'); } catch(_){ return []; } }
-function setCatalog(arr){ localStorage.setItem('elip52_catalog', JSON.stringify(arr)); }
+// Progressive numbering per anno: ELP-YYYY-####
+function nextId(){
+  const d=new Date(); const y=d.getFullYear();
+  const key='elip53_seq_'+y;
+  let seq = parseInt(localStorage.getItem(key)||'0',10)+1;
+  localStorage.setItem(key,String(seq));
+  return `ELP-${y}-${String(seq).padStart(4,'0')}`;
+}
+
+function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip53_catalog')||'[]'); } catch(_){ return []; } }
+function setCatalog(arr){ localStorage.setItem('elip53_catalog', JSON.stringify(arr)); }
 function ensureCatalog(){ if(getCatalog().length===0) setCatalog(DEFAULT_CATALOG); }
-function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip52_current')||'null'); } catch(_){ return null; } }
-function setCurrent(obj){ localStorage.setItem('elip52_current', JSON.stringify(obj)); }
-function getArchive(){ try{ return JSON.parse(localStorage.getItem('elip52_archive')||'[]'); } catch(_){ return []; } }
-function setArchive(arr){ localStorage.setItem('elip52_archive', JSON.stringify(arr)); }
+function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip53_current')||'null'); } catch(_){ return null; } }
+function setCurrent(obj){ localStorage.setItem('elip53_current', JSON.stringify(obj)); }
+function getArchive(){ try{ return JSON.parse(localStorage.getItem('elip53_archive')||'[]'); } catch(_){ return []; } }
+function setArchive(arr){ localStorage.setItem('elip53_archive', JSON.stringify(arr)); }
 
 function getOrBootstrap(){
   let cur=getCurrent();
   if(!cur){
-    cur={ id:newId(), createdAt:new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', note:'', lines:[], images:[] };
+    cur={ id:nextId(), createdAt:new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', note:'', lines:[], images:[] };
     setCurrent(cur);
   }
   return cur;
@@ -68,13 +76,11 @@ function renderLines(){
       <td><input type="number" min="0" step="1" class="form-control form-control-sm text-end line-qty" data-idx="${idx}" value="${r.qty||1}"></td>
       <td><input type="number" min="0" step="0.01" class="form-control form-control-sm text-end line-price" data-idx="${idx}" value="${r.price||0}"></td>
       <td class="text-end" id="lineTot${idx}">€ 0,00</td>
-      <td>
-        <div class="form-check">
-          <input class="form-check-input line-done" type="checkbox" data-idx="${idx}" ${r.done?'checked':''}>
-          <label class="form-check-label small">finita</label>
-        </div>
-        <div class="small text-muted">${r.doneBy?('Op: '+r.doneBy):''} ${r.doneDate?('• '+r.doneDate):''}</div>
+      <td class="text-center">
+        <input class="form-check-input line-done" type="checkbox" data-idx="${idx}" ${r.done?'checked':''}>
       </td>
+      <td><input class="form-control form-control-sm line-operator" data-idx="${idx}" value="${r.doneBy||''}" placeholder="Nome operatore"></td>
+      <td><input type="date" class="form-control form-control-sm line-date" data-idx="${idx}" value="${r.doneDate||''}"></td>
       <td><button class="btn btn-sm btn-outline-danger" data-del="${idx}">✕</button></td>`;
     body.appendChild(tr);
   });
@@ -89,25 +95,14 @@ function onLineEdit(e){
   if(e.target.classList.contains('line-desc')) cur.lines[id].desc=e.target.value;
   if(e.target.classList.contains('line-qty')) cur.lines[id].qty=parseFloat(e.target.value)||0;
   if(e.target.classList.contains('line-price')) cur.lines[id].price=parseFloat(e.target.value)||0;
+  if(e.target.classList.contains('line-operator')) cur.lines[id].doneBy=e.target.value;
+  if(e.target.classList.contains('line-date')) cur.lines[id].doneDate=e.target.value;
+  if(e.target.classList.contains('line-done')) cur.lines[id].done=e.target.checked;
   setCurrent(cur); recalc();
 }
 function onLineClick(e){
   const btn=e.target.closest('button[data-del]'); 
-  if(btn){ const idx=+btn.getAttribute('data-del'); const cur=getOrBootstrap(); cur.lines.splice(idx,1); setCurrent(cur); renderLines(); recalc(); return; }
-  const done=e.target.closest('input.line-done'); 
-  if(done){
-    const idx=+done.dataset.idx; 
-    const cur=getOrBootstrap();
-    cur.lines[idx].done = done.checked;
-    if(done.checked){
-      const operator = prompt('Operatore che ha completato:' , cur.lines[idx].doneBy || '' ) || '';
-      const date = prompt('Data fine lavoro (YYYY-MM-DD):', cur.lines[idx].doneDate || new Date().toISOString().slice(0,10)) || '';
-      cur.lines[idx].doneBy = operator; cur.lines[idx].doneDate = date;
-    }else{
-      cur.lines[idx].doneBy=''; cur.lines[idx].doneDate='';
-    }
-    setCurrent(cur); renderLines(); recalc();
-  }
+  if(btn){ const idx=+btn.getAttribute('data-del'); const cur=getOrBootstrap(); cur.lines.splice(idx,1); setCurrent(cur); renderLines(); recalc(); }
 }
 
 function recalc(){
@@ -186,13 +181,13 @@ function renderArchive(){
     const b=e.target.closest('button[data-open]'); if(!b) return;
     const id=b.getAttribute('data-open');
     const rec=getArchive().find(x=>x.id===id); if(!rec) return;
-    localStorage.setItem('elip52_current', JSON.stringify(rec));
+    localStorage.setItem('elip53_current', JSON.stringify(rec));
     document.querySelector('[data-bs-target="#tab-editor"]').click();
     renderLines(); fillForm(); recalc();
   };
 }
 
-/* Catalogo edit */
+/* Catalog edit */
 function editCatalog(){
   const arr=getCatalog();
   const text=prompt('Modifica catalogo (JSON):', JSON.stringify(arr,null,2));
@@ -201,7 +196,7 @@ function editCatalog(){
   catch(_){ alert('JSON non valido'); }
 }
 
-/* PDF builder + preview + JPG cover */
+/* PDF + preview + JPG cover */
 async function headerPDF(doc,pad,cur){
   try{
     const img = await fetch('logo-elip.jpg').then(r=>r.blob()).then(b=>new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(b);}));
@@ -232,15 +227,15 @@ async function buildPDF(type){
   const cur=getOrBootstrap(), doc=new jsPDF({unit:'pt',format:'a4'}), pad=40;
   await headerPDF(doc,pad,cur);
   if(type==='dett'){
-    const rows=cur.lines.length? cur.lines.map(r=>[r.code||'', r.desc||'', String(r.qty||0), EURO(r.price||0), EURO((r.qty||0)*(r.price||0)), (r.done? '✓ '+(r.doneBy||'')+' '+(r.doneDate||'') : '')]) : [['','','0','€ 0,00','€ 0,00','']];
-    doc.autoTable({startY:230, head:[['Cod','Descrizione','Q.tà','Prezzo','Totale','Completata']],
+    const rows=cur.lines.length? cur.lines.map(r=>[r.code||'', r.desc||'', String(r.qty||0), EURO(r.price||0), EURO((r.qty||0)*(r.price||0)), (r.done? '✓':'') , (r.doneBy||''), (r.doneDate||'')]) : [['','','0','€ 0,00','€ 0,00','','','']];
+    doc.autoTable({startY:230, head:[['Cod','Descrizione','Q.tà','Prezzo','Totale','OK','Operatore','Data fine']],
       body:rows, styles:{fontSize:11,cellPadding:7}, headStyles:{fillColor:[199,119,59]},
-      columnStyles:{0:{cellWidth:55},1:{cellWidth:260},2:{cellWidth:60,halign:'right'},3:{cellWidth:85,halign:'right'},4:{cellWidth:95,halign:'right'},5:{cellWidth:120}}});
+      columnStyles:{0:{cellWidth:55},1:{cellWidth:220},2:{cellWidth:50,halign:'right'},3:{cellWidth:85,halign:'right'},4:{cellWidth:85,halign:'right'},5:{cellWidth:30,halign:'center'},6:{cellWidth:120},7:{cellWidth:80}}});
   }else{
-    const rows=cur.lines.length? cur.lines.map(r=>[r.code||'', r.desc||'', (r.done? '✓ '+(r.doneBy||'')+' '+(r.doneDate||'') : '')]) : [['','Nessuna voce','']];
-    doc.autoTable({startY:230, head:[['Cod','Descrizione incluse','Completata']],
+    const rows=cur.lines.length? cur.lines.map(r=>[r.code||'', r.desc||'', (r.done? '✓':'') , (r.doneBy||''), (r.doneDate||'')]) : [['','Nessuna voce','','','']];
+    doc.autoTable({startY:230, head:[['Cod','Descrizione incluse','OK','Operatore','Data fine']],
       body:rows, styles:{fontSize:11,cellPadding:7}, headStyles:{fillColor:[199,119,59]},
-      columnStyles:{0:{cellWidth:60},1:{cellWidth:360},2:{cellWidth:120}}});
+      columnStyles:{0:{cellWidth:60},1:{cellWidth:300},2:{cellWidth:30,halign:'center'},3:{cellWidth:120},4:{cellWidth:80}}});
   }
   let y=doc.lastAutoTable.finalY+14;
   const note=(cur.note||'').trim(); if(note){ doc.setFontSize(13); doc.text('NOTE', pad, y); y+=10; doc.setFontSize(11.5); const w=doc.splitTextToSize(note,455); doc.text(w, pad, y); y+=w.length*14+8; }
@@ -275,15 +270,79 @@ function jpgCover(){
   const url=c.toDataURL('image/jpeg',0.92); const link=qs('#btnJPG'); link.href=url; link.download=cur.id+'-copertina.jpg';
 }
 
-/* Bind + Init */
+/* Email testo istituzionale */
+function shareMail(){
+  const cur=getOrBootstrap();
+  const subject=encodeURIComponent(`ELIP Tagliente — Preventivo ${cur.id}`);
+  const corpo = `Spett.le CLIENTE
+
+Alleghiamo alla presente il documento in oggetto
+
+Con l'occasione, 
+
+porgiamo distinti saluti
+
+
+ELIP Tagliente Srl
+VIA CONCHIA, 54/E  70043 MONOPOLI (BA)
+P.IVA/C.F.: 04386020723
+TEL. 080.777090  FAX 080.8876756
+MAIL: info@eliptagliente.it  WEB. www.eliptagliente.it
+POSTA CERTIFICATA: eliptagliente@pec.it
+Codice SDI          M5UXCR1
+BANCA POPOLARE DI BARI (FIL. MONOPOLI – BA)
+IBAN IT02U0542441570000001006392
+BIC/SWIFT CODE: BPBAIT3B`;
+
+  const info = `
+Preventivo: ${cur.id}
+Cliente: ${cur.cliente||'-'}
+Articolo: ${cur.articolo||'-'}
+DDT: ${cur.ddt||'-'}
+Totale (IVA 22%): ${qs('#totale').textContent}`;
+
+  const body=encodeURIComponent(corpo + "\n\n" + info);
+  window.location.href='mailto:'+(cur.email||'')+'?subject='+subject+'&body='+body;
+
+  // Lettera HTML con logo e info centrati per copia/incolla
+  const w=window.open('','_blank');
+  w.document.write(`
+  <html><head><meta charset="utf-8"><title>ELIP Preventivo</title></head>
+  <body style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">
+    <div style="text-align:center;margin-top:10px">
+      <img src="logo-elip.jpg" style="height:70px"><br><br>
+      <div style="white-space:pre-wrap;font-size:16px;text-align:left;max-width:720px;margin:0 auto">
+${corpo.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+      </div>
+      <hr style="margin:24px auto;max-width:720px">
+      <div style="font-size:18px;max-width:720px;margin:0 auto">
+        <div><strong>Preventivo:</strong> ${cur.id}</div>
+        <div><strong>Cliente:</strong> ${cur.cliente||'-'}</div>
+        <div><strong>Articolo:</strong> ${cur.articolo||'-'}</div>
+        <div><strong>DDT:</strong> ${cur.ddt||'-'}</div>
+        <div><strong>Totale (IVA 22%):</strong> ${qs('#totale').textContent}</div>
+      </div>
+    </div>
+  </body></html>`);
+  w.document.close();
+}
+
+function shareWA(){
+  const cur=getOrBootstrap();
+  const lines = cur.lines.map(r=>`• ${r.code||''} ${r.desc||''} x${r.qty||0}`).join('%0A');
+  const msg = encodeURIComponent(`ELIP Tagliente — Preventivo ${cur.id}%0ACliente: ${cur.cliente||'-'}%0ATotale: ${qs('#totale').textContent}%0A%0AVoci:%0A`)+lines;
+  window.open('https://wa.me/?text='+msg, '_blank');
+}
+
+/* Init */
+function newQuote(){ localStorage.removeItem('elip53_current'); const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id; renderLines(); fillForm(); recalc(); }
 function bindAll(){
-  qs('#btnNew').addEventListener('click', ()=>{ localStorage.removeItem('elip52_current'); const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id; renderLines(); fillForm(); recalc(); });
+  qs('#btnNew').addEventListener('click', newQuote);
   qs('#btnSave').addEventListener('click', saveQuote);
   qs('#btnArchive').addEventListener('click', archiveQuote);
   qs('#btnPDFDett').addEventListener('click', ()=>previewPDF('dett'));
   qs('#btnPDFTot').addEventListener('click', ()=>previewPDF('tot'));
   qs('#btnJPG').addEventListener('click', jpgCover);
-  qs('#btnXLS').addEventListener('click', exportXLS);
   qs('#btnMail').addEventListener('click', shareMail);
   qs('#btnWA').addEventListener('click', shareWA);
   qs('#catalogSearch').addEventListener('input', e=> renderCatalog(e.target.value));
