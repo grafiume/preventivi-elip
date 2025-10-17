@@ -462,3 +462,39 @@ function init(){
   });
 }
 document.addEventListener('DOMContentLoaded', init);
+
+// Dettagliato
+doc.autoTable({
+  startY: 230,
+  head: [['Cod','Descrizione','Q.tà','Prezzo','Totale']],
+  body: rows,
+  margin: { left: pad, right: pad },
+  styles: { fontSize: 11, cellPadding: 7, overflow: 'linebreak' },
+  bodyStyles: { valign: 'top' },
+  tableWidth: 'auto',
+  headStyles: { fillColor: [199,119,59] },
+  columnStyles: {
+    0: { cellWidth: 55 },
+    1: { cellWidth: 255 }, // ridotto un po'
+    2: { cellWidth: 60, halign:'right' },
+    3: { cellWidth: 80, halign:'right' },
+    4: { cellWidth: 90, halign:'right' }
+  }
+});
+
+// Solo totale (no prezzi)
+doc.autoTable({
+  startY: 230,
+  head: [['Cod','Descrizione incluse']],
+  body: rows,
+  margin: { left: pad, right: pad },
+  styles: { fontSize: 11, cellPadding: 7, overflow: 'linebreak' },
+  bodyStyles: { valign: 'top' },
+  tableWidth: 'auto',
+  headStyles: { fillColor: [199,119,59] },
+  columnStyles: {
+    0: { cellWidth: 60 },
+    1: { cellWidth: 380 }  // se sfora, porta 370–375
+  }
+});
+
