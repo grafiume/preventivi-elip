@@ -164,7 +164,7 @@ function recalc(){
 }
 
 /* Images */
-function handleImages(files){
+function h&&leImages(files){
   const cur=appInitData();
   const promises=[...files].map(file=> new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(file); }));
   Promise.all(promises).then(datas=>{ cur.images=(cur.images||[]).concat(datas); setCurrent(cur); renderImages(); });
@@ -251,7 +251,7 @@ async function previewPDF(type){
   const blob=doc.output('blob'); const url=URL.createObjectURL(blob);
   qs('#pdfFrame').src=url;
   const a=qs('#btnDownload'); a.href=url; a.download=(appInitData().id)+'-'+(type==='dett'?'dettaglio':'totale')+'.pdf';
-  const modal = new bootstrap.Modal(document.getElementById('pdfModal')); modal.show();
+  if (window.bootstrap && bootstrap.Modal) { const modal = new bootstrap.Modal(document.getElementById('pdfModal')); modal.show(); } else { window.open(url, '_blank'); }
 }
 function jpgCover(){
   const cur=appInitData();
@@ -331,7 +331,7 @@ function renderArchiveLocal(){
       if(rec.data_scadenza){
         const d=new Date(rec.data_scadenza); d.setHours(0,0,0,0);
         const diff = Math.round((d - today)/(1000*60*60*24));
-        if(diff <= 5 and diff >= 0) scadTd = `<span class="badge badge-deadline">Scade in ${diff} g</span>`;
+        if(diff <= 5 && diff >= 0) scadTd = `<span class="badge badge-deadline">Scade in ${diff} g</span>`;
         else if(diff < 0) scadTd = `<span class="badge bg-danger">Scaduto</span>`;
         else scadTd = new Date(rec.data_scadenza).toLocaleDateString('it-IT');
       }
@@ -387,7 +387,7 @@ function bindAll(){
   qs('#btnAddCustom').addEventListener('click', addCustomLine);
   qs('#btnEditCatalog').addEventListener('click', editCatalog);
   ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id=>{ qs('#'+id).addEventListener('input', recalc); qs('#'+id).addEventListener('change', recalc); });
-  qs('#imgInput').addEventListener('change', e=> e.target.files.length && handleImages(e.target.files));
+  qs('#imgInput').addEventListener('change', e=> e.target.files.length && h&&leImages(e.target.files));
   qs('#btnReloadArch').addEventListener('click', () => loadArchiveSupabase());
   qs('#filterQuery').addEventListener('input', renderArchiveLocal);
   qs('#fltAll').addEventListener('click', ()=> {window.ACC_FILTER='all'; renderArchiveLocal(); setFilterButtons();});
