@@ -148,6 +148,21 @@ function recalc(){
   setCurrent(cur);
 }
 
+function editCatalog(){
+  const arr = getCatalog();
+  const text = prompt('Modifica catalogo (JSON):', JSON.stringify(arr, null, 2));
+  if (!text) return;
+  try {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) throw new Error('Il JSON deve essere un array di voci');
+    setCatalog(parsed);
+    renderCatalog(qs('#catalogSearch').value || '');
+    buildDatalist();
+  } catch (e) {
+    alert('JSON non valido: ' + e.message);
+  }
+}
+
 /* Images */
 function handleImages(files){
   const cur=bootstrap();
