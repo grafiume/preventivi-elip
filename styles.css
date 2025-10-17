@@ -20,4 +20,4 @@ input, select, textarea{background:var(--card)!important; color:var(--text)!impo
 .thumb-wrap button{position:absolute; top:4px; right:4px;}
 .badge-deadline{background:var(--warn); color:#000; font-weight:700;}
 .tr-done{background:var(--donebg)!important;}
-.checkmark{color:var(--green); font-weight:700; margin-left:6px;}
+.btn-state{min-width:128px;}

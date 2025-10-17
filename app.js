@@ -1,4 +1,4 @@
-// v5.6 — toggle immagini, visual checkmark, email HTML migliorata
+// v5.7 — stato a pulsante, immagini sempre incluse, catalogo con hint
 const EURO = n => n.toLocaleString('it-IT',{style:'currency',currency:'EUR'});
 const qs = s => document.querySelector(s);
 
@@ -24,24 +24,24 @@ const DEFAULT_CATALOG=[
 ];
 
 function nextId(){
-  const d=new Date(); const y=d.getFullYear(); const key='elip56_seq_'+y;
+  const d=new Date(); const y=d.getFullYear(); const key='elip57_seq_'+y;
   let seq = parseInt(localStorage.getItem(key)||'0',10)+1; localStorage.setItem(key,String(seq));
   return `ELP-${y}-${String(seq).padStart(4,'0')}`;
 }
 
-function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip56_catalog')||'[]'); } catch(_){ return []; } }
-function setCatalog(arr){ localStorage.setItem('elip56_catalog', JSON.stringify(arr)); }
+function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip57_catalog')||'[]'); } catch(_){ return []; } }
+function setCatalog(arr){ localStorage.setItem('elip57_catalog', JSON.stringify(arr)); }
 function ensureCatalog(){ if(getCatalog().length===0) setCatalog(DEFAULT_CATALOG); }
-function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip56_current')||'null'); } catch(_){ return null; } }
-function setCurrent(obj){ localStorage.setItem('elip56_current', JSON.stringify(obj)); }
-function getArchive(){ try{ return JSON.parse(localStorage.getItem('elip56_archive')||'[]'); } catch(_){ return []; } }
-function setArchive(arr){ localStorage.setItem('elip56_archive', JSON.stringify(arr)); }
+function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip57_current')||'null'); } catch(_){ return null; } }
+function setCurrent(obj){ localStorage.setItem('elip57_current', JSON.stringify(obj)); }
+function getArchive(){ try{ return JSON.parse(localStorage.getItem('elip57_archive')||'[]'); } catch(_){ return []; } }
+function setArchive(arr){ localStorage.setItem('elip57_archive', JSON.stringify(arr)); }
 
 function getOrBootstrap(){
   let cur=getCurrent();
   if(!cur){
     cur={ id:nextId(), createdAt:new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'',
-      dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[], images:[], includeImages:true };
+      dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[], images:[] };
     setCurrent(cur);
   }
   return cur;
@@ -54,7 +54,7 @@ function renderCatalog(filter=""){
   rows.forEach(x=>{
     const li=document.createElement('li');
     li.className='list-group-item d-flex align-items-center justify-content-between';
-    li.innerHTML=`<div><span class="badge-pill me-2">${x.code}</span>${x.desc}</div>`;
+    li.innerHTML=`<div><span class="badge-pill me-2">${x.code}</span>${x.desc}</div><span class="text-muted small">clicca per aggiungere</span>`;
     li.addEventListener('click', ()=> addLine({code:x.code, desc:x.desc, qty:1, price:0, done:false, doneBy:'', doneDate:''}));
     list.appendChild(li);
   });
@@ -69,18 +69,14 @@ function renderLines(){
   cur.lines.forEach((r,idx)=>{
     const tr=document.createElement('tr');
     if(r.done) tr.classList.add('tr-done');
+    const stateBtn = `<button class="btn btn-sm btn-state ${r.done?'btn-success':'btn-danger'}" data-state="${idx}">${r.done?'Completato':'Non eseguito'}</button>`;
     tr.innerHTML=`
       <td><input class="form-control form-control-sm line-code" data-idx="${idx}" value="${r.code||''}"></td>
-      <td>
-        <div class="d-flex align-items-center gap-2">
-          <input class="form-control form-control-sm line-desc" data-idx="${idx}" value="${r.desc||''}" placeholder="Descrizione…">
-          <span class="checkmark" ${r.done?'':'style="visibility:hidden"'}>✔</span>
-        </div>
-      </td>
+      <td><input class="form-control form-control-sm line-desc" data-idx="${idx}" value="${r.desc||''}" placeholder="Descrizione…"></td>
       <td><input type="number" min="0" step="1" class="form-control form-control-sm text-end line-qty" data-idx="${idx}" value="${r.qty||1}"></td>
       <td><input type="number" min="0" step="0.01" class="form-control form-control-sm text-end line-price" data-idx="${idx}" value="${r.price||0}"></td>
       <td class="text-end" id="lineTot${idx}">€ 0,00</td>
-      <td class="text-center"><input class="form-check-input line-done" type="checkbox" data-idx="${idx}" ${r.done?'checked':''}></td>
+      <td class="text-center">${stateBtn}</td>
       <td><input class="form-control form-control-sm line-operator" data-idx="${idx}" value="${r.doneBy||''}" placeholder="Nome operatore"></td>
       <td><input type="date" class="form-control form-control-sm line-date" data-idx="${idx}" value="${r.doneDate||''}"></td>
       <td><button class="btn btn-sm btn-outline-danger" data-del="${idx}">✕</button></td>`;
@@ -99,22 +95,26 @@ function onLineEdit(e){
   if(e.target.classList.contains('line-price')) cur.lines[id].price=parseFloat(e.target.value)||0;
   if(e.target.classList.contains('line-operator')) cur.lines[id].doneBy=e.target.value;
   if(e.target.classList.contains('line-date')) cur.lines[id].doneDate=e.target.value;
-  if(e.target.classList.contains('line-done')) { 
-    cur.lines[id].done=e.target.checked; 
-    // aggiornamento stile/segno di spunta
-    renderLines();
-  }
   setCurrent(cur); recalc();
 }
 function onLineClick(e){
-  const btn=e.target.closest('button[data-del]'); 
-  if(btn){ const idx=+btn.getAttribute('data-del'); const cur=getOrBootstrap(); cur.lines.splice(idx,1); setCurrent(cur); renderLines(); recalc(); }
+  const btnDel=e.target.closest('button[data-del]'); 
+  if(btnDel){ const idx=+btnDel.getAttribute('data-del'); const cur=getOrBootstrap(); cur.lines.splice(idx,1); setCurrent(cur); renderLines(); recalc(); return; }
+  const btnState=e.target.closest('button[data-state]');
+  if(btnState){
+    const idx=+btnState.getAttribute('data-state');
+    const cur=getOrBootstrap();
+    cur.lines[idx].done = !cur.lines[idx].done;
+    setCurrent(cur);
+    renderLines();
+    recalc();
+    return;
+  }
 }
 
 function recalc(){
   const cur=getOrBootstrap();
   ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id=> cur[id]=qs('#'+id).value);
-  cur.includeImages = qs('#toggleImgs').checked;
   let imponibile=0, toDo=0, done=0;
   cur.lines.forEach((r,i)=>{
     const lt=(r.qty||0)*(r.price||0); imponibile+=lt;
@@ -135,7 +135,6 @@ function fillForm(){
   const cur=getOrBootstrap();
   qs('#quoteId').textContent=cur.id;
   ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id=> qs('#'+id).value = cur[id]||'');
-  qs('#toggleImgs').checked = !!cur.includeImages;
   renderImages();
 }
 
@@ -199,7 +198,7 @@ function renderArchive(){
     const b=e.target.closest('button[data-open]'); if(!b) return;
     const id=b.getAttribute('data-open');
     const rec=getArchive().find(x=>x.id===id); if(!rec) return;
-    localStorage.setItem('elip56_current', JSON.stringify(rec));
+    localStorage.setItem('elip57_current', JSON.stringify(rec));
     document.querySelector('[data-bs-target="#tab-editor"]').click();
     renderLines(); fillForm(); recalc();
   };
@@ -214,7 +213,7 @@ function editCatalog(){
   catch(_){ alert('JSON non valido'); }
 }
 
-/* PDF builder (no internal dates; toggle images) */
+/* PDF builder: immagini sempre incluse */
 async function headerPDF(doc,pad,cur){
   try{
     const img = await fetch('logo-elip.jpg').then(r=>r.blob()).then(b=>new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(b);}));
@@ -258,14 +257,12 @@ async function buildPDF(type){
   let y=doc.lastAutoTable.finalY+14;
   const note=(cur.note||'').trim(); if(note){ doc.setFontSize(13); doc.text('NOTE', pad, y); y+=10; doc.setFontSize(11.5); const w=doc.splitTextToSize(note,455); doc.text(w, pad, y); y+=w.length*14+8; }
   totalsPDF(doc,pad,cur,y+6);
-  if(cur.includeImages){
-    for(const src of (cur.images||[])){
-      const img=new Image(); img.src=src; await img.decode();
-      const ratio = Math.min(500/img.width, 500/img.height);
-      const w = Math.round(img.width*ratio), h=Math.round(img.height*ratio);
-      doc.addPage(); doc.setFontSize(12); doc.text('Immagine allegata', pad, 80);
-      doc.addImage(src, 'JPEG', pad, 100, w, h);
-    }
+  for(const src of (cur.images||[])){
+    const img=new Image(); img.src=src; await img.decode();
+    const ratio = Math.min(500/img.width, 500/img.height);
+    const w = Math.round(img.width*ratio), h=Math.round(img.height*ratio);
+    doc.addPage(); doc.setFontSize(12); doc.text('Immagine allegata', pad, 80);
+    doc.addImage(src, 'JPEG', pad, 100, w, h);
   }
   return doc;
 }
@@ -276,7 +273,7 @@ async function previewPDF(type){
   const a=qs('#btnDownload'); a.href=url; a.download=(getOrBootstrap().id)+'-'+(type==='dett'?'dettaglio':'totale')+'.pdf';
   const modal = new bootstrap.Modal(document.getElementById('pdfModal')); modal.show();
 }
-/* JPG cover (coerente al PDF "totale" senza date interne) */
+/* JPG cover */
 function jpgCover(){
   const cur=getOrBootstrap();
   const c=document.createElement('canvas'); c.width=1200; c.height=900; const g=c.getContext('2d');
@@ -296,12 +293,10 @@ function jpgCover(){
   const url=c.toDataURL('image/jpeg',0.92); const link=qs('#btnJPG'); link.href=url; link.download=cur.id+'-anteprima.jpg';
 }
 
-/* Email con tabella elegante (HTML nella finestra di cortesia) */
+/* Email (come v5.6, già migliorata) */
 function shareMail(){
   const cur=getOrBootstrap();
   const subject=encodeURIComponent(`ELIP Tagliente — Preventivo ${cur.id}`);
-
-  // Corpo testo semplice per mailto (senza HTML)
   const linesTxt = cur.lines.map(r=>`• ${r.code||''} - ${r.desc||''} (Q.tà ${r.qty||0}) — Totale riga ${EURO((r.qty||0)*(r.price||0))}`).join('\\n');
   const corpoTxt = `Spett.le CLIENTE
 
@@ -327,7 +322,6 @@ IBAN IT02U0542441570000001006392
 BIC/SWIFT CODE: BPBAIT3B`;
   window.location.href='mailto:'+(cur.email||'')+'?subject='+subject+'&body='+encodeURIComponent(corpoTxt);
 
-  // Finestra HTML formattata
   const rows = cur.lines.map((r,i)=>`
     <tr style="background:${i%2?'#fafafa':'#ffffff'}">
       <td style="border:1px solid #ddd;padding:8px">${r.code||''}</td>
@@ -390,7 +384,7 @@ function shareWA(){
 }
 
 /* Init */
-function newQuote(){ localStorage.removeItem('elip56_current'); const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id; renderLines(); fillForm(); recalc(); }
+function newQuote(){ localStorage.removeItem('elip57_current'); const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id; renderLines(); fillForm(); recalc(); }
 function bindAll(){
   qs('#btnNew').addEventListener('click', newQuote);
   qs('#btnSave').addEventListener('click', saveQuote);
@@ -407,7 +401,6 @@ function bindAll(){
   qs('#imgInput').addEventListener('change', e=> e.target.files.length && handleImages(e.target.files));
   qs('#btnReloadArch').addEventListener('click', renderArchive);
   qs('#filterQuery').addEventListener('input', renderArchive);
-  qs('#toggleImgs').addEventListener('change', recalc);
 }
 
 function init(){
