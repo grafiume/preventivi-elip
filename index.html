@@ -35,7 +35,6 @@
   </ul>
 
   <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white">
-    <!-- Nuovo preventivo -->
     <div class="tab-pane fade show active" id="pane-new" role="tabpanel">
       <form id="jobForm" autocomplete="off">
         <div class="row g-2">
@@ -64,7 +63,10 @@
         <div class="d-flex align-items-center gap-2 mt-3 flex-wrap">
           <button type="button" class="btn btn-outline-secondary" id="btnNuova">Nuova scheda</button>
           <button type="button" class="btn btn-outline-primary" id="btnSalvaBozza">Salva bozza (JSON)</button>
-          <button type="button" class="btn btn-primary" id="btnPDF">Genera PDF</button>
+          <div class="btn-group" role="group">
+            <button type="button" class="btn btn-primary" id="btnPDFDett">PDF Dettaglio</button>
+            <button type="button" class="btn btn-outline-primary" id="btnPDFTot">PDF Totale</button>
+          </div>
           <a id="btnScarica" class="btn btn-success d-none" download="preventivo-elip.pdf">Scarica PDF</a>
           <button type="button" class="btn btn-outline-dark" id="btnMail">Prepara Email</button>
           <button type="button" class="btn btn-warning" id="btnArchivia">Archivia preventivo</button>
@@ -80,13 +82,13 @@
                 <th>Descrizione lavori</th>
                 <th class="text-center" style="width:70px">Flag</th>
                 <th style="width:170px">Importo (€)</th>
+                <th style="width:140px">Avanzamento</th>
               </tr>
             </thead>
             <tbody id="workBody"></tbody>
           </table>
         </div>
 
-        <!-- NOTE (campo libero) -->
         <div class="card my-3">
           <div class="card-header bg-light">NOTE</div>
           <div class="card-body">
@@ -113,7 +115,6 @@
           </div>
         </div>
 
-        <!-- Chiusura preventivo -->
         <div class="card my-3">
           <div class="card-header bg-light">Stato preventivo</div>
           <div class="card-body">
@@ -147,12 +148,11 @@
         </div>
 
         <p class="text-muted small mt-2">
-          Il PDF conterrà solo le voci selezionate e, se compilati, i dettagli di stato e le note.
+          I PDF sono uniformi: intestazione con logo, tabella lavorazioni, NOTE, riepilogo e box stato. "Totale" include solo elenco voci senza prezzi.
         </p>
       </form>
     </div>
 
-    <!-- Archivio -->
     <div class="tab-pane fade" id="pane-arch" role="tabpanel">
       <div class="d-flex gap-2 flex-wrap align-items-center mb-2">
         <select id="filterStato" class="form-select" style="max-width:220px">
@@ -161,8 +161,7 @@
           <option value="INVIATO">Inviato</option>
           <option value="CONFERMATO">Confermato</option>
         </select>
-        <input id="filterQuery" class="form-control" placeholder="Cerca per cliente/articolo/DDT…"
-               style="max-width:320px">
+        <input id="filterQuery" class="form-control" placeholder="Cerca per cliente/articolo/DDT…" style="max-width:320px">
         <button class="btn btn-outline-secondary" id="btnReloadArch" type="button">Aggiorna</button>
       </div>
       <div class="table-responsive">
@@ -179,6 +178,57 @@
     </div>
   </div>
 </main>
+
+<div class="modal fade" id="progressModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Avanzamento lavorazione <span id="pmCode"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label">Stato</label>
+            <select id="pmStato" class="form-select">
+              <option value="DA_ESEGUIRE">Da eseguire</option>
+              <option value="IN_LAVORAZIONE">In lavorazione</option>
+              <option value="COMPLETATA">Completata</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Reparto</label>
+            <select id="pmReparto" class="form-select">
+              <option value="">—</option>
+              <option>Avvolgimento</option>
+              <option>Tornitura</option>
+              <option>Fresatura</option>
+              <option>Montaggio</option>
+              <option>Collaudo</option>
+              <option>Verniciatura</option>
+              <option>Altro</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Operatore</label>
+            <input id="pmOperatore" class="form-control" placeholder="Nome">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Presa in carico</label>
+            <input id="pmPresa" type="date" class="form-control">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Concluso</label>
+            <input id="pmConcluso" type="date" class="form-control">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="pmSave">Salva</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <footer class="footer-bar">
   <div class="container py-2 text-center small text-muted">© ELIP Tagliente — preventivi</div>
