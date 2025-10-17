@@ -1,4 +1,4 @@
-// v5.8 — email senza qty/unit, stato grafico, datalist codice→descrizione
+// v5.9 — remove catalog hint, acceptance badge (OK/NO) in form and archive
 const EURO = n => n.toLocaleString('it-IT',{style:'currency',currency:'EUR'});
 const qs = s => document.querySelector(s);
 
@@ -24,18 +24,18 @@ const DEFAULT_CATALOG=[
 ];
 
 function nextId(){
-  const d=new Date(); const y=d.getFullYear(); const key='elip58_seq_'+y;
+  const d=new Date(); const y=d.getFullYear(); const key='elip59_seq_'+y;
   let seq = parseInt(localStorage.getItem(key)||'0',10)+1; localStorage.setItem(key,String(seq));
   return `ELP-${y}-${String(seq).padStart(4,'0')}`;
 }
 
-function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip58_catalog')||'[]'); } catch(_){ return []; } }
-function setCatalog(arr){ localStorage.setItem('elip58_catalog', JSON.stringify(arr)); }
+function getCatalog(){ try{ return JSON.parse(localStorage.getItem('elip59_catalog')||'[]'); } catch(_){ return []; } }
+function setCatalog(arr){ localStorage.setItem('elip59_catalog', JSON.stringify(arr)); }
 function ensureCatalog(){ if(getCatalog().length===0) setCatalog(DEFAULT_CATALOG); }
-function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip58_current')||'null'); } catch(_){ return null; } }
-function setCurrent(obj){ localStorage.setItem('elip58_current', JSON.stringify(obj)); }
-function getArchive(){ try{ return JSON.parse(localStorage.getItem('elip58_archive')||'[]'); } catch(_){ return []; } }
-function setArchive(arr){ localStorage.setItem('elip58_archive', JSON.stringify(arr)); }
+function getCurrent(){ try{ return JSON.parse(localStorage.getItem('elip59_current')||'null'); } catch(_){ return null; } }
+function setCurrent(obj){ localStorage.setItem('elip59_current', JSON.stringify(obj)); }
+function getArchive(){ try{ return JSON.parse(localStorage.getItem('elip59_archive')||'[]'); } catch(_){ return []; } }
+function setArchive(arr){ localStorage.setItem('elip59_archive', JSON.stringify(arr)); }
 
 function getOrBootstrap(){
   let cur=getCurrent();
@@ -64,7 +64,7 @@ function renderCatalog(filter=""){
   rows.forEach(x=>{
     const li=document.createElement('li');
     li.className='list-group-item d-flex align-items-center justify-content-between';
-    li.innerHTML=`<div><span class="badge-pill me-2">${x.code}</span>${x.desc}</div><span class="text-muted small">clicca per aggiungere</span>`;
+    li.innerHTML=`<div><span class="badge-pill me-2">${x.code}</span>${x.desc}</div>`;
     li.addEventListener('click', ()=> addLine({code:x.code, desc:x.desc, qty:1, price:0, done:false, doneBy:'', doneDate:''}));
     list.appendChild(li);
   });
@@ -105,7 +105,6 @@ function onLineEdit(e){
     const hit = getCatalog().find(x=> x.code.toLowerCase()===val.toLowerCase());
     if(hit) {
       cur.lines[id].desc = hit.desc;
-      // aggiorna input descrizione della stessa riga
       e.target.closest('tr').querySelector('.line-desc').value = hit.desc;
     }
   }
@@ -134,6 +133,13 @@ function onLineClick(e){
 function recalc(){
   const cur=getOrBootstrap();
   ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id=> cur[id]=qs('#'+id).value);
+  // badge accettazione
+  const badge = qs('#accBadge');
+  if((cur.dataAcc||'').trim()){
+    badge.textContent = '● OK'; badge.classList.remove('acc-no'); badge.classList.add('acc-ok');
+  } else {
+    badge.textContent = '● NO'; badge.classList.remove('acc-ok'); badge.classList.add('acc-no');
+  }
   let imponibile=0, toDo=0, done=0;
   cur.lines.forEach((r,i)=>{
     const lt=(r.qty||0)*(r.price||0); imponibile+=lt;
@@ -154,6 +160,10 @@ function fillForm(){
   const cur=getOrBootstrap();
   qs('#quoteId').textContent=cur.id;
   ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id=> qs('#'+id).value = cur[id]||'');
+  // init badge
+  const badge = qs('#accBadge');
+  if((cur.dataAcc||'').trim()){ badge.textContent='● OK'; badge.classList.add('acc-ok'); }
+  else { badge.textContent='● NO'; badge.classList.add('acc-no'); }
   renderImages();
 }
 
@@ -204,11 +214,13 @@ function renderArchive(){
       else if(diff < 0) scadTd = `<span class="badge bg-danger">Scaduto</span>`;
       else scadTd = new Date(rec.dataScad).toLocaleDateString('it-IT');
     }
+    const accBadge = (rec.dataAcc||'').trim() ? '<span class="acc-pill acc-ok">● OK</span>' : '<span class="acc-pill acc-no">● NO</span>';
     const tr=document.createElement('tr');
     const dateIt=new Date(rec.createdAt).toLocaleDateString('it-IT');
     tr.innerHTML=`
       <td>${rec.id}</td><td>${dateIt}</td><td>${rec.cliente||''}</td>
       <td>${rec.articolo||''}</td><td>${rec.ddt||''}</td><td>${EURO(tot)}</td>
+      <td>${accBadge}</td>
       <td>${scadTd}</td><td>${dot} ${pct}%</td>
       <td><button class="btn btn-sm btn-outline-primary" data-open="${rec.id}">Modifica</button></td>`;
     body.appendChild(tr);
@@ -217,7 +229,7 @@ function renderArchive(){
     const b=e.target.closest('button[data-open]'); if(!b) return;
     const id=b.getAttribute('data-open');
     const rec=getArchive().find(x=>x.id===id); if(!rec) return;
-    localStorage.setItem('elip58_current', JSON.stringify(rec));
+    localStorage.setItem('elip59_current', JSON.stringify(rec));
     document.querySelector('[data-bs-target="#tab-editor"]').click();
     renderLines(); fillForm(); recalc();
   };
@@ -232,7 +244,7 @@ function editCatalog(){
   catch(_){ alert('JSON non valido'); }
 }
 
-/* PDF builder */
+/* PDF builder (immutato rispetto a v5.8) */
 async function headerPDF(doc,pad,cur){
   try{
     const img = await fetch('logo-elip.jpg').then(r=>r.blob()).then(b=>new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(b);}));
@@ -292,7 +304,7 @@ async function previewPDF(type){
   const a=qs('#btnDownload'); a.href=url; a.download=(getOrBootstrap().id)+'-'+(type==='dett'?'dettaglio':'totale')+'.pdf';
   const modal = new bootstrap.Modal(document.getElementById('pdfModal')); modal.show();
 }
-/* JPG cover */
+/* JPG cover (immutata) */
 function jpgCover(){
   const cur=getOrBootstrap();
   const c=document.createElement('canvas'); c.width=1200; c.height=900; const g=c.getContext('2d');
@@ -312,7 +324,7 @@ function jpgCover(){
   const url=c.toDataURL('image/jpeg',0.92); const link=qs('#btnJPG'); link.href=url; link.download=cur.id+'-anteprima.jpg';
 }
 
-/* Email (no qty/unit in mailto; HTML table Cod/Descrizione) */
+/* Email / WhatsApp invariati da v5.8 */
 function shareMail(){
   const cur=getOrBootstrap();
   const subject=encodeURIComponent(`ELIP Tagliente — Preventivo ${cur.id}`);
@@ -341,7 +353,7 @@ IBAN IT02U0542441570000001006392
 BIC/SWIFT CODE: BPBAIT3B`;
   window.location.href='mailto:'+(cur.email||'')+'?subject='+subject+'&body='+encodeURIComponent(corpoTxt);
 
-  // HTML letter with table Cod + Descrizione
+  // HTML di cortesia con tabella Cod + Descrizione
   const rows = cur.lines.map((r,i)=>`
     <tr style="background:${i%2?'#fafafa':'#ffffff'}">
       <td style="border:1px solid #ddd;padding:8px">${r.code||''}</td>
@@ -385,9 +397,7 @@ TEL. 080.777090  FAX 080.8876756
 MAIL: info@eliptagliente.it  WEB. www.eliptagliente.it
 POSTA CERTIFICATA: eliptagliente@pec.it
 Codice SDI          M5UXCR1
-BANCA POPOLARE DI BARI (FIL. MONOPOLI – BA)
-IBAN IT02U0542441570000001006392
-BIC/SWIFT CODE: BPBAIT3B
+IBAN IT02U0542441570000001006392 — BIC/SWIFT: BPBAIT3B
       </div>
     </div>
   </body></html>`);
@@ -402,7 +412,7 @@ function shareWA(){
 }
 
 /* Init */
-function newQuote(){ localStorage.removeItem('elip58_current'); const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id; renderLines(); fillForm(); recalc(); }
+function newQuote(){ localStorage.removeItem('elip59_current'); const cur=getOrBootstrap(); qs('#quoteId').textContent=cur.id; renderLines(); fillForm(); recalc(); }
 function bindAll(){
   qs('#btnNew').addEventListener('click', newQuote);
   qs('#btnSave').addEventListener('click', saveQuote);

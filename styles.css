@@ -24,3 +24,10 @@ input, select, textarea{background:var(--card)!important; color:var(--text)!impo
 .btn-state-dot.red{background:var(--red);}
 .btn-state-dot.green{background:var(--green);}
 .code-input{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;}
+/* Accettazione pill */
+.acc-pill{display:inline-flex;align-items:center;gap:6px;font-weight:700;padding:6px 10px;border-radius:999px;border:2px solid transparent}
+.acc-pill::before{content:"";display:inline-block;width:14px;height:14px;border-radius:50%}
+.acc-ok{color:#0f5132;background:#d1e7dd;border-color:#badbcc}
+.acc-ok::before{background:#198754}
+.acc-no{color:#842029;background:#f8d7da;border-color:#f5c2c7}
+.acc-no::before{background:#dc3545}
