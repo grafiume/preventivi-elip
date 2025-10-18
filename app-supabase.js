@@ -1,116 +1,20 @@
-// Supabase integration v6.2-SB (global + safe init)
+// Supabase integration v6.3-SB (no UI config)
 if (!window.__ELIP_SUPA_LOADED) { window.__ELIP_SUPA_LOADED = true;
-
-let supa = null;
-function getCfg(){
-  return {
-    url: localStorage.getItem('elip_supabase_url') || (window.supabaseConfig && window.supabaseConfig.url) || '',
-    anon: localStorage.getItem('elip_supabase_anon') || (window.supabaseConfig && window.supabaseConfig.anon) || '',
-    bucket: (window.supabaseConfig && window.supabaseConfig.bucket) || 'preventivi-img'
-  };
-}
-
-window.supaClient = function () {
-  if (supa) return supa;
-  const cfg = getCfg();
-  try {
-    if (!cfg.url || !cfg.anon) throw new Error('Config mancante');
-    supa = window.supabase.createClient(cfg.url, cfg.anon);
-    window.supa = supa;
-  } catch (e) { console.error('[Supabase] Errore creazione client:', e); supa = null; }
-  return supa;
-};
-
-function showBanner(){
-  const a = document.getElementById('sbAlert');
-  if (a) a.classList.remove('d-none');
-}
-
-window.uploadImagesIfNeeded = async function (idPreventivo, images) {
-  const cli = window.supaClient();
-  if (!cli) throw new Error('Supabase non inizializzato');
-  const out = [];
-  for (const src of (images || [])) {
-    if (typeof src === 'string' && src.startsWith('http')) { out.push(src); continue; }
-    const base64 = (src.split(',')[1] || '');
-    const bin = atob(base64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const blob = new Blob([bytes], { type: 'image/jpeg' });
-    const key = `${idPreventivo}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
-    const up = await cli.storage.from(getCfg().bucket).upload(key, blob, { upsert: false });
-    if (up.error) { console.error('[Supabase] Upload img:', up.error); continue; }
-    const { data: pub } = cli.storage.from(getCfg().bucket).getPublicUrl(key);
-    out.push(pub.publicUrl);
-  }
-  return out;
-};
-
+let supa=null;
+function supaClient(){ if(supa) return supa; try{ const cfg=window.supabaseConfig||{}; supa=window.supabase.createClient(cfg.url, cfg.anon); window.supa=supa; }catch(e){ console.error('[Supabase] Errore creazione client:', e); supa=null;} return supa;}
 window.saveToSupabase = async function (archiveAfter) {
-  const cli = window.supaClient();
-  if (!cli) { showBanner(); alert('Supabase non configurato'); return; }
-
-  const cur = JSON.parse(localStorage.getItem('elip_current') || 'null');
-  if (!cur) { alert('Nessun preventivo corrente'); return; }
-
-  const uploaded = await window.uploadImagesIfNeeded(cur.id, cur.images || []);
-  cur.images = uploaded;
-  localStorage.setItem('elip_current', JSON.stringify(cur));
-
-  const imponibile = (cur.lines || []).reduce((s, r) => s + (r.qty || 0) * (r.price || 0), 0);
-  const totale = imponibile * 1.22;
-
-  const payload = {
-    numero: cur.id,
-    cliente: cur.cliente || null,
-    articolo: cur.articolo || null,
-    ddt: cur.ddt || null,
-    telefono: cur.telefono || null,
-    email: cur.email || null,
-    data_invio: cur.dataInvio || null,
-    data_accettazione: cur.dataAcc || null,
-    data_scadenza: cur.dataScad || null,
-    note: cur.note || null,
-    linee: cur.lines || [],
-    images: cur.images || [],
-    totale
-  };
-
-  const existing = await cli.from('preventivi').select('id').eq('numero', cur.id).maybeSingle();
-  if (existing.error && existing.error.code !== 'PGRST116') { console.error('[Supabase] Read error:', existing.error); showBanner(); return; }
-
-  if (existing.data) {
-    const upd = await cli.from('preventivi').update(payload).eq('id', existing.data.id);
-    if (upd.error) { console.error('[Supabase] Update error:', upd.error); showBanner(); return; }
-  } else {
-    const ins = await cli.from('preventivi').insert(payload);
-    if (ins.error) { console.error('[Supabase] Insert error:', ins.error); showBanner(); return; }
-  }
-
+  const cli=supaClient(); if(!cli){ alert('Supabase non configurato'); return; }
+  const cur = JSON.parse(localStorage.getItem('elip_current')||'null'); if(!cur){ alert('Nessun preventivo corrente'); return; }
+  const imponibile=(cur.lines||[]).reduce((s,r)=>s+(r.qty||0)*(r.price||0),0); const totale=imponibile*1.22;
+  const payload={ numero:cur.id, cliente:cur.cliente||null, articolo:cur.articolo||null, ddt:cur.ddt||null, telefono:cur.telefono||null, email:cur.email||null, data_invio:cur.dataInvio||null, data_accettazione:cur.dataAcc||null, data_scadenza:cur.dataScad||null, note:cur.note||null, linee:cur.lines||[], images:cur.images||[], totale };
+  const existing=await cli.from('preventivi').select('id').eq('numero',cur.id).maybeSingle();
+  if(existing.error and existing.error.code!=='PGRST116'){ console.error('[Supabase] Read error:', existing.error); return; }
+  if(existing.data){ const upd=await cli.from('preventivi').update(payload).eq('id', existing.data.id); if(upd.error){ console.error('[Supabase] Update error:', upd.error); alert('Errore aggiornamento: '+upd.error.message); return; } }
+  else { const ins=await cli.from('preventivi').insert(payload); if(ins.error){ console.error('[Supabase] Insert error:', ins.error); alert("Errore inserimento: "+ins.error.message+"\nEsegui lo schema.sql in Supabase per creare le colonne 'linee' e 'images' (JSONB)."); return; } }
+  if(typeof toastSaved==='function') toastSaved();
   await window.loadArchiveSupabase();
-  if (typeof toastSaved === 'function') toastSaved();
-  if (archiveAfter) { const tabBtn = document.querySelector('[data-bs-target="#tab-archivio"]'); if (tabBtn) tabBtn.click(); }
+  if(archiveAfter){ const tabBtn=document.querySelector('[data-bs-target="#tab-archivio"]'); if(tabBtn) tabBtn.click(); }
 };
-
-window.loadArchiveSupabase = async function () {
-  const cli = window.supaClient();
-  if (!cli) { showBanner(); return []; }
-  const { data, error } = await cli.from('preventivi').select('*').order('created_at', { ascending: false });
-  if (error) { console.error('[Supabase] Errore caricamento archivio:', error); showBanner(); localStorage.setItem('elip_archive','[]'); return []; }
-  localStorage.setItem('elip_archive', JSON.stringify(data || []));
-  return data || [];
-};
-
-window.subscribeRealtime = function () {
-  const cli = window.supaClient();
-  if (!cli) { showBanner(); return; }
-  cli.channel('preventivi_changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'preventivi' }, () => {
-      window.loadArchiveSupabase().then(() => {
-        if (typeof renderArchiveLocal === 'function') renderArchiveLocal();
-      });
-    })
-    .subscribe();
-};
-
-} // end guard
+window.loadArchiveSupabase = async function(){ const cli=supaClient(); if(!cli) return []; const {data,error}=await cli.from('preventivi').select('*').order('created_at',{ascending:false}); if(error){ console.error('[Supabase] Errore caricamento archivio:', error); localStorage.setItem('elip_archive','[]'); return []; } localStorage.setItem('elip_archive', JSON.stringify(data||[])); return data||[]; };
+window.subscribeRealtime = function(){ const cli=supaClient(); if(!cli) return; cli.channel('preventivi_changes').on('postgres_changes',{event:'*',schema:'public',table:'preventivi'},()=>{ window.loadArchiveSupabase().then(()=>{ if(typeof renderArchiveLocal==='function') renderArchiveLocal(); }); }).subscribe(); };
+}
