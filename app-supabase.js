@@ -1,111 +1,89 @@
-// Supabase integration v6.3-SB (no UI config)
-if (!window.__ELIP_SUPA_LOADED) {
-  window.__ELIP_SUPA_LOADED = true;
-  let supa = null;
 
-  function supaClient() {
-    if (supa) return supa;
-    try {
-      const cfg = window.supabaseConfig || {};
-      supa = window.supabase.createClient(cfg.url, cfg.anon);
-      window.supa = supa;
-    } catch (e) {
-      console.error('[Supabase] Errore creazione client:', e);
-      supa = null;
-    }
-    return supa;
+// app-supabase.js — v4.0
+(() => {
+  'use strict';
+  const supabaseUrl = window.SUPABASE_URL;
+  const supabaseKey = window.SUPABASE_KEY;
+  if (!supabaseUrl || !supabaseKey) { console.warn('Supabase config mancante'); return; }
+  const { createClient } = window.supabase;
+  const sb = createClient(supabaseUrl, supabaseKey);
+  window.supabase = sb;
+
+  function EURO(n){ try{ return (n||0).toLocaleString('it-IT',{style:'currency',currency:'EUR'});}catch(e){return String(n||0);} }
+
+  function computeProgress(lines){
+    let toDo=0,done=0;
+    (lines||[]).forEach(r=>{
+      const has=(r.desc||'').trim()!=='' || (+r.qty||0)>0 || (+r.price||0)>0;
+      if(has){ toDo++; if(r.doneDate && String(r.doneDate).trim()) done++; }
+    });
+    return toDo ? Math.round((done/toDo)*100) : 0;
   }
 
-  window.saveToSupabase = async function (archiveAfter) {
-    const cli = supaClient();
-    if (!cli) {
-      alert('Supabase non configurato');
-      return;
-    }
+  function serializeCurrent(){
+    let cur=null;
+    try{ cur = JSON.parse(localStorage.getItem('elip_current')||'null'); }catch(_){ cur=null; }
+    if(!cur) return null;
+    const imponibile = (cur.lines||[]).reduce((s,r)=>s+(+r.qty||0)*(+r.price||0),0);
+    const totale = imponibile*1.22;
+    const progress = computeProgress(cur.lines||[]);
 
-    const cur = JSON.parse(localStorage.getItem('elip_current') || 'null');
-    if (!cur) {
-      alert('Nessun preventivo corrente');
-      return;
-    }
-
-    const imponibile = (cur.lines || []).reduce((s, r) => s + (r.qty || 0) * (r.price || 0), 0);
-    const totale = imponibile * 1.22;
-
-    const payload = {
-      numero: cur.id,
-      cliente: cur.cliente || null,
-      articolo: cur.articolo || null,
-      ddt: cur.ddt || null,
-      telefono: cur.telefono || null,
-      email: cur.email || null,
-      data_invio: cur.dataInvio || null,
-      data_accettazione: cur.dataAcc || null,
-      data_scadenza: cur.dataScad || null,
-      note: cur.note || null,
-      linee: cur.lines || [],
-      images: cur.images || [],
+    return {
+      // numero: NON lo mandiamo all'insert per lasciare fare al trigger
+      cliente: cur.cliente||null,
+      articolo: cur.articolo||null,
+      ddt: cur.ddt||null,
+      telefono: cur.telefono||null,
+      email: cur.email||null,
+      data_invio: cur.dataInvio||null,
+      data_accettazione: cur.dataAcc||null,
+      data_scadenza: cur.dataScad||null,
+      note: cur.note||null,
+      linee: cur.lines||[],
+      images: cur.images||[],
       totale,
+      avanzamento_commessa: progress, // se esiste la colonna
     };
+  }
 
-    const existing = await cli.from('preventivi').select('id').eq('numero', cur.id).maybeSingle();
+  async function saveToSupabase(forceInsert=false){
+    const rec = serializeCurrent();
+    if(!rec){ throw new Error('Nessun record da salvare'); }
 
-    if (existing.error && existing.error.code !== 'PGRST116') {
-      console.error('[Supabase] Read error:', existing.error);
-      return;
+    // Se il current ha già un numero ELP-..., aggiorniamo; altrimenti inseriamo
+    let current = null;
+    try{ current = JSON.parse(localStorage.getItem('elip_current')||'null'); }catch(_){}
+    const hasNumero = current && current.id && /^ELP-/.test(current.id);
+
+    if(hasNumero){
+      const { data, error } = await sb
+        .from('preventivi')
+        .update(rec)
+        .eq('numero', current.id)
+        .select()
+        .single();
+      if(error) throw error;
+      return { data };
+    }else{
+      const { data, error } = await sb
+        .from('preventivi')
+        .insert(rec)
+        .select()
+        .single();
+      if(error) throw error;
+      return { data };
     }
+  }
 
-    if (existing.data) {
-      const upd = await cli.from('preventivi').update(payload).eq('id', existing.data.id);
-      if (upd.error) {
-        console.error('[Supabase] Update error:', upd.error);
-        alert('Errore aggiornamento: ' + upd.error.message);
-        return;
-      }
-    } else {
-      const ins = await cli.from('preventivi').insert(payload);
-      if (ins.error) {
-        console.error('[Supabase] Insert error:', ins.error);
-        alert(
-          "Errore inserimento: " +
-            ins.error.message +
-            "\\nEsegui lo schema.sql in Supabase per creare le colonne 'linee' e 'images' (JSONB)."
-        );
-        return;
-      }
-    }
-
-    if (typeof toastSaved === 'function') toastSaved();
-    await window.loadArchiveSupabase();
-    if (archiveAfter) {
-      const tabBtn = document.querySelector('[data-bs-target="#tab-archivio"]');
-      if (tabBtn) tabBtn.click();
-    }
-  };
-
-  window.loadArchiveSupabase = async function () {
-    const cli = supaClient();
-    if (!cli) return [];
-    const { data, error } = await cli.from('preventivi').select('*').order('created_at', { ascending: false });
-    if (error) {
-      console.error('[Supabase] Errore caricamento archivio:', error);
-      localStorage.setItem('elip_archive', '[]');
-      return [];
-    }
-    localStorage.setItem('elip_archive', JSON.stringify(data || []));
+  async function loadArchiveSupabase(){
+    const { data, error } = await sb
+      .from('preventivi')
+      .select('numero, created_at, cliente, articolo, ddt, totale, data_accettazione, data_scadenza, avanzamento_commessa, is_chiusa')
+      .order('created_at',{ascending:false});
+    if(error){ console.warn(error); return []; }
     return data || [];
-  };
+  }
 
-  window.subscribeRealtime = function () {
-    const cli = supaClient();
-    if (!cli) return;
-    cli
-      .channel('preventivi_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'preventivi' }, () => {
-        window.loadArchiveSupabase().then(() => {
-          if (typeof renderArchiveLocal === 'function') renderArchiveLocal();
-        });
-      })
-      .subscribe();
-  };
-}
+  window.saveToSupabase = saveToSupabase;
+  window.loadArchiveSupabase = loadArchiveSupabase;
+})();

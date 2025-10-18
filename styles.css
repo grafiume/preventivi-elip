@@ -1,34 +1,15 @@
 
-/* v3.3 only red/green + badges */
 :root{
   --elip-green:#198754;
   --elip-red:#dc3545;
-  --elip-gray:#6c757d;
 }
 .acc-ok{ color: var(--elip-green); font-weight:600; }
 .acc-no{ color: var(--elip-red);   font-weight:600; }
 
-/* Stato dot button (righe) */
-.btn-state-dot{
-  width:18px;height:18px;border-radius:50%;
-  border:2px solid var(--elip-red);
-  display:inline-block; background:#fff; vertical-align:middle;
-  cursor:pointer;
-}
+.btn-state-dot{ width:18px; height:18px; border-radius:50%; border:2px solid var(--elip-red); background:#fff; display:inline-block; cursor:pointer; }
 .btn-state-dot.green{ border-color:var(--elip-green); background:var(--elip-green); }
-.btn-state-dot.red{ border-color:var(--elip-red); background:#fff; }
 
-/* Header badges */
-#pvCounter{ display:inline-block; margin-left:10px; padding:2px 8px; border-radius:12px; background:#f1f1f1; color:#333; font-size:12px; font-weight:600; }
-#pvCurrent{ display:inline-block; margin-left:10px; padding:2px 10px; border-radius:12px; background:#fff; border:2px solid #333; color:#111; font-size:12px; font-weight:700; }
-
-/* Image thumbs */
 #imgPreview .thumb-wrap{ position:relative; display:inline-block; }
 #imgPreview .thumb{ max-width:180px; max-height:140px; object-fit:cover; border:1px solid #ddd; border-radius:6px; }
-#imgPreview .btn-del-img{
-  position:absolute; top:4px; right:4px;
-  border:1px solid #dc3545; color:#dc3545; background:#fff;
-  border-radius:6px; padding:2px 6px; line-height:1;
-  font-size:12px; cursor:pointer;
-}
+#imgPreview .btn-del-img{ position:absolute; top:4px; right:4px; border:1px solid #dc3545; color:#dc3545; background:#fff; border-radius:6px; padding:2px 6px; line-height:1; font-size:12px; cursor:pointer; }
 #imgPreview .btn-del-img:hover{ background:#dc3545; color:#fff; }
