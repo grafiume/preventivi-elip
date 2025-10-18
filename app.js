@@ -164,7 +164,7 @@ function recalc(){
 }
 
 /* Images */
-function h&&leImages(files){
+function handleImages(files){
   const cur=appInitData();
   const promises=[...files].map(file=> new Promise(res=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.readAsDataURL(file); }));
   Promise.all(promises).then(datas=>{ cur.images=(cur.images||[]).concat(datas); setCurrent(cur); renderImages(); });
@@ -387,7 +387,7 @@ function bindAll(){
   qs('#btnAddCustom').addEventListener('click', addCustomLine);
   qs('#btnEditCatalog').addEventListener('click', editCatalog);
   ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id=>{ qs('#'+id).addEventListener('input', recalc); qs('#'+id).addEventListener('change', recalc); });
-  qs('#imgInput').addEventListener('change', e=> e.target.files.length && h&&leImages(e.target.files));
+  qs('#imgInput').addEventListener('change', e=> e.target.files.length && handleImages(e.target.files));
   qs('#btnReloadArch').addEventListener('click', () => loadArchiveSupabase());
   qs('#filterQuery').addEventListener('input', renderArchiveLocal);
   qs('#fltAll').addEventListener('click', ()=> {window.ACC_FILTER='all'; renderArchiveLocal(); setFilterButtons();});
