@@ -36,9 +36,17 @@
       </div>
       <button id="btnMail" class="btn btn-sm btn-outline-dark">E-mail</button>
       <button id="btnWA" class="btn btn-sm btn-outline-success">WhatsApp</button>
+      <button id="btnCfg" class="btn btn-sm btn-outline-secondary">Configura Supabase</button>
     </div>
   </div>
 </header>
+
+<div id="sbAlert" class="alert alert-danger m-0 rounded-0 d-none">
+  <div class="container-fluid d-flex justify-content-between align-items-center">
+    <div><strong>Connessione Supabase non riuscita.</strong> Controlla il Project URL.</div>
+    <button id="btnCfg2" class="btn btn-sm btn-outline-dark">Configura</button>
+  </div>
+</div>
 
 <main class="container-fluid my-3">
   <ul class="nav nav-tabs" role="tablist">
@@ -67,90 +75,7 @@
         </aside>
 
         <section class="col-12 col-lg-9">
-          <div class="card mb-2">
-            <div class="card-body">
-              <div class="row g-2 align-items-end">
-                <div class="col-md-4">
-                  <label class="form-label">Cliente</label>
-                  <input id="cliente" class="form-control" placeholder="Ragione sociale / Nome">
-                </div>
-                <div class="col-md-4">
-                  <label class="form-label">Articolo da riparare</label>
-                  <input id="articolo" class="form-control" placeholder="Es. Motore…">
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label">DDT</label>
-                  <input id="ddt" class="form-control">
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label">Telefono</label>
-                  <input id="telefono" class="form-control">
-                </div>
-                <div class="col-md-4">
-                  <label class="form-label">Email</label>
-                  <input id="email" type="email" class="form-control">
-                </div>
-                <div class="col-md-4">
-                  <label class="form-label">Data invio</label>
-                  <input id="dataInvio" type="date" class="form-control">
-                </div>
-                <div class="col-md-4">
-                  <label class="form-label">Data accettazione</label>
-                  <input id="dataAcc" type="date" class="form-control">
-                </div>
-                <div class="col-md-4">
-                  <label class="form-label">Scadenza lavori</label>
-                  <input id="dataScad" type="date" class="form-control">
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="table-responsive">
-              <table class="table table-hover align-middle m-0" id="linesTable">
-                <thead class="table-light">
-                  <tr>
-                    <th style="width:110px">Cod</th>
-                    <th>Descrizione</th>
-                    <th style="width:90px">Q.tà</th>
-                    <th style="width:120px">Prezzo €</th>
-                    <th style="width:130px">Tot. riga €</th>
-                    <th style="width:70px" class="text-center">Stato</th>
-                    <th style="width:150px">Operatore</th>
-                    <th style="width:160px">Data fine</th>
-                    <th style="width:60px"></th>
-                  </tr>
-                </thead>
-                <tbody id="linesBody"></tbody>
-              </table>
-              <datalist id="catalogCodes"></datalist>
-            </div>
-            <div class="card-body">
-              <label class="form-label">NOTE</label>
-              <textarea id="note" rows="3" class="form-control" placeholder="Annotazioni / ricambi (uno per riga)…"></textarea>
-
-              <div class="mt-3">
-                <label class="form-label">Immagini</label>
-                <input id="imgInput" type="file" accept="image/*" multiple class="form-control">
-                <div id="imgPreview" class="d-flex flex-wrap gap-2 mt-2"></div>
-              </div>
-            </div>
-            <div class="card-footer">
-              <div class="row g-2 justify-content-end">
-                <div class="col-md-5">
-                  <div class="card totals">
-                    <div class="card-body">
-                      <div class="d-flex justify-content-between"><span>Imponibile</span><strong id="imponibile">€ 0,00</strong></div>
-                      <div class="d-flex justify-content-between small text-muted"><span>IVA (22%)</span><strong id="iva">€ 0,00</strong></div>
-                      <hr>
-                      <div class="d-flex justify-content-between h5"><span>TOTALE</span><strong id="totale">€ 0,00</strong></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <div id="preventivoContainer"></div>
         </section>
       </div>
     </div>
@@ -179,6 +104,32 @@
     </div>
   </div>
 </main>
+
+<!-- Modal Config -->
+<div class="modal fade" id="cfgModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Configura Supabase</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Project URL</label>
+          <input id="cfgUrl" class="form-control" placeholder="https://xxxxx.supabase.co">
+          <div class="form-text">Copia e incolla da: Supabase → Settings → API → Project URL</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Anon Key</label>
+          <textarea id="cfgAnon" class="form-control" rows="3" placeholder="eyJhbGciOi..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cfgSave" class="btn btn-primary">Salva</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Modal PDF -->
 <div class="modal fade" id="pdfModal" tabindex="-1">
@@ -222,6 +173,33 @@
     </div>
   </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = new bootstrap.Modal(document.getElementById('cfgModal'));
+  const openCfg = () => {
+    document.getElementById('cfgUrl').value = (localStorage.getItem('elip_supabase_url') || window.supabaseConfig.url || '');
+    document.getElementById('cfgAnon').value = (localStorage.getItem('elip_supabase_anon') || window.supabaseConfig.anon || '');
+    modal.show();
+  };
+  document.getElementById('btnCfg').addEventListener('click', openCfg);
+  document.getElementById('btnCfg2').addEventListener('click', openCfg);
+  document.getElementById('cfgSave').addEventListener('click', () => {
+    const u = document.getElementById('cfgUrl').value.trim();
+    const k = document.getElementById('cfgAnon').value.trim();
+    if (!u.startsWith('https://') || !u.endsWith('.supabase.co')) { alert('URL non valido'); return; }
+    if (!k || k.length < 20) { alert('Anon key non valida'); return; }
+    localStorage.setItem('elip_supabase_url', u);
+    localStorage.setItem('elip_supabase_anon', k);
+    modal.hide();
+    // Re-boot client
+    if (window.__ELIP_SUPA_LOADED && window.supaClient) {
+      window.__ELIP_SUPA_LOADED = false;
+      location.reload();
+    }
+  });
+});
+</script>
 
 </body>
 </html>
