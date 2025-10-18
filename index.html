@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Preventivi ELIP — v6.3-SB</title>
+  <title>Preventivi ELIP — v6.4-SB</title>
   <meta name="theme-color" content="#c7773b">
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -29,8 +29,8 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
       <button id="btnNew" class="btn btn-sm btn-outline-secondary">Nuovo</button>
+      <button id="btnClear" class="btn btn-sm btn-outline-danger">Pulisci pagina</button>
       <button id="btnSave" class="btn btn-sm btn-primary">Salva</button>
-      <button id="btnArchive" class="btn btn-sm btn-outline-warning">Archivia</button>
       <div class="btn-group">
         <button id="btnPDFDett" class="btn btn-sm btn-success">PDF Dettaglio</button>
         <button id="btnPDFTot" class="btn btn-sm btn-outline-success">PDF Totale</button>
@@ -93,7 +93,7 @@
                     <th style="width:90px">Q.tà</th>
                     <th style="width:120px">Prezzo €</th>
                     <th style="width:130px">Tot. riga €</th>
-                    <th style="width:70px" class="text-center">Stato</th>
+                    <th style="width:90px" class="text-center">Stato</th>
                     <th style="width:150px">Operatore</th>
                     <th style="width:160px">Data fine</th>
                     <th style="width:60px"></th>
@@ -163,7 +163,6 @@
   </div>
 </main>
 
-<!-- Modali e Toast -->
 <div class="modal fade" id="pdfModal" tabindex="-1">
   <div class="modal-dialog modal-xl">
     <div class="modal-content">

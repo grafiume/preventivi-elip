@@ -24,6 +24,6 @@ input, select, textarea{background:var(--card)!important; color:var(--text)!impo
 .acc-ok{color:#0f5132;background:#d1e7dd;border-color:#badbcc}
 .acc-ok::before{background:#198754}
 .acc-no{color:#842029;background:#f8d7da;border-color:#f5c2c7}
-.acc-no::before{background:#dc3545}
 .progress-bar.bg-50 { background-color: var(--warn)!important; }
 .progress-bar.bg-100 { background-color: var(--green)!important; }
+.progress-dot{font-size:22px; line-height:1; display:inline-block; vertical-align:middle}
