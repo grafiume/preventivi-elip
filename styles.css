@@ -1,27 +1,30 @@
 
+/* v3.0 UI tweaks */
 :root{
   --elip-green:#198754;
   --elip-red:#dc3545;
   --elip-blue:#0d6efd;
   --elip-gray:#6c757d;
+  --elip-amber:#ffc107;
 }
-body{background:#f5f6f8}
-.appbar{background:#fff;border-bottom:1px solid #eee}
-.acc-pill{font-weight:600}
-.acc-ok{color:var(--elip-green)}
-.acc-no{color:var(--elip-red)}
-.progress-dot{font-size:16px}
+/* Stato dot button */
+.btn-state-dot{
+  width:18px;height:18px;border-radius:50%;
+  border:2px solid var(--elip-red);
+  display:inline-block; background:#fff; vertical-align:middle;
+  cursor:pointer;
+}
+.btn-state-dot.green{ border-color:var(--elip-green); background:var(--elip-green); }
+.btn-state-dot.red{ border-color:var(--elip-red); background:#fff; }
+.btn-state-dot:focus{ outline: none; box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25); }
 
-/* Uniform filter buttons */
-.btn-filter{border-width:2px !important;font-weight:600}
-#fltAll{border-color:var(--elip-gray);color:var(--elip-gray)}
-#fltAll.active{background:var(--elip-gray);color:#fff;border-color:var(--elip-gray)}
-#fltOk{border-color:var(--elip-green);color:var(--elip-green)}
-#fltOk.active{background:var(--elip-green);color:#fff;border-color:var(--elip-green)}
-#fltNo{border-color:var(--elip-red);color:var(--elip-red)}
-#fltNo.active{background:var(--elip-red);color:#fff;border-color:var(--elip-red)}
-#fltChiusi{border-color:var(--elip-blue);color:var(--elip-blue)}
-#fltChiusi.active{background:var(--elip-blue);color:#fff;border-color:var(--elip-blue)}
-
-/* Hide gray counters near Aggiorna */
-#accCounters{display:none !important;}
+/* Image thumbs */
+#imgPreview .thumb-wrap{ position:relative; display:inline-block; }
+#imgPreview .thumb{ max-width:180px; max-height:140px; object-fit:cover; border:1px solid #ddd; border-radius:6px; }
+#imgPreview .btn-del-img{
+  position:absolute; top:4px; right:4px;
+  border:1px solid #dc3545; color:#dc3545; background:#fff;
+  border-radius:6px; padding:2px 6px; line-height:1;
+  font-size:12px; cursor:pointer;
+}
+#imgPreview .btn-del-img:hover{ background:#dc3545; color:#fff; }
