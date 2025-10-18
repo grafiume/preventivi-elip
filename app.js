@@ -82,7 +82,27 @@ IBAN IT02U0542441570000001006392
 BIC/SWIFT CODE: BPBAIT3B`;window.location.href='mailto:'+(c.email||'')+'?subject='+subject+'&body='+encodeURIComponent(body);}
 function shareWA(){const c=appInitData();const lines=(c.lines||[]).map(r=>`• ${r.code||''} ${r.desc||''}`).join('%0A');const msg=encodeURIComponent(`ELIP Tagliente — Preventivo ${c.id}%0ACliente: ${c.cliente||'-'}%0ATotale: ${qs('#totale').textContent}%0A%0AVoci:%0A`)+lines;window.open('https://wa.me/?text='+msg,'_blank');}
 window.ACC_FILTER='all';
-function computeAccCounters(a){let ok=0,no=0;a.forEach(r=>((r.data_accettazione||'').toString().trim()?ok++:no++));const el=document.getElementById('accCounters');if(el)el.textContent=`Accettati: ${ok} — Da accettare: ${no}`;}
+function computeAccCounters(a){
+  let ok=0,no=0,closed=0;
+  a.forEach(r=>{
+    const accOk = (r.data_accettazione||'').toString().trim().length>0;
+    if(accOk) ok++; else no++;
+    // Calcolo stato avanzamento (%) dalle linee
+    const lines = Array.isArray(r.linee)? r.linee : [];
+    let toDo=0,done=0;
+    lines.forEach(x=>{
+      const has=(x.desc||'').toString().trim()!=='' || (+x.qty||0)>0 || (+x.price||0)>0;
+      if(has){
+        toDo++;
+        if(x.doneDate && String(x.doneDate).trim().length) done++;
+      }
+    });
+    const pct = toDo ? Math.round((done/toDo)*100) : 0;
+    if(accOk && pct===100) closed++;
+  });
+  const el=document.getElementById('accCounters');
+  if(el) el.textContent=`Accettati: ${ok} — Da accettare: ${no} — Chiuse: ${closed}`;
+} — Da accettare: ${no}`;}
 function renderArchiveLocal(){const arr=getArchiveLocal();computeAccCounters(arr);const q=(document.getElementById('filterQuery')?.value||'').toLowerCase();const body=document.getElementById('archBody');if(!body)return;body.innerHTML='';const today=new Date();today.setHours(0,0,0,0);arr.filter(r=>(r.cliente||'').toLowerCase().includes(q)).filter(r=>(window.ACC_FILTER==='all')||(window.ACC_FILTER==='ok'&&(r.data_accettazione||'').toString().trim())||(window.ACC_FILTER==='no'&&!(r.data_accettazione||'').toString().trim())).forEach(rec=>{const tot=(rec.totale!=null)?rec.totale:((rec.linee||[]).reduce((s,r)=>s+(+r.qty||0)*(+r.price||0),0)*1.22);const toDo=(rec.linee||[]).filter(r=>(r.desc||'').trim()!==''||(+r.qty||0)>0||(+r.price||0)>0).length;const done=(rec.linee||[]).filter(r=>r.doneDate&&String(r.doneDate).trim().length).length;const pct=toDo?Math.round((done/toDo)*100):0;const dot=pct===100?'<span class="progress-dot" style="color:var(--green)">●</span>':(pct>=50?'<span class="progress-dot" style="color:var(--warn)">●</span>':'<span class="progress-dot" style="color:var(--red)">●</span>');let scad='<span class="text-muted">-</span>';if(rec.data_scadenza){const d=new Date(rec.data_scadenza);d.setHours(0,0,0,0);const diff=Math.round((d-today)/(1000*60*60*24));if(diff<=5&&diff>=0)scad=`<span class="badge badge-deadline">Scade in ${diff} g</span>`;else if(diff<0)scad='<span class="badge bg-danger">Scaduto</span>';else scad=new Date(rec.data_scadenza).toLocaleDateString('it-IT');}const acc=(rec.data_accettazione||'').toString().trim()?'<span class="acc-pill acc-ok">● OK</span>':'<span class="acc-pill acc-no">● NO</span>';const itDate=new Date(rec.created_at||rec.createdAt||Date.now()).toLocaleDateString('it-IT');const tr=document.createElement('tr');tr.innerHTML=`<td>${rec.numero||rec.id}</td><td>${itDate}</td><td>${rec.cliente||''}</td><td>${rec.articolo||''}</td><td>${rec.ddt||''}</td><td>${EURO(tot||0)}</td><td>${acc}</td><td>${scad}</td><td>${dot} ${pct}%</td><td><button class="btn btn-sm btn-outline-primary" data-open="${rec.id}">Modifica</button></td>`;body.appendChild(tr);});body.onclick=e=>{const b=e.target.closest('button[data-open]');if(!b)return;const id=b.getAttribute('data-open');const rec=getArchiveLocal().find(x=>x.id===id);if(!rec)return;const cur={id:rec.numero||rec.id,createdAt:rec.created_at,cliente:rec.cliente,articolo:rec.articolo,ddt:rec.ddt,telefono:rec.telefono,email:rec.email,dataInvio:rec.data_invio,dataAcc:rec.data_accettazione,dataScad:rec.data_scadenza,note:rec.note,lines:rec.linee||[],images:rec.images||[]};setCurrent(cur);document.querySelector('[data-bs-target="#tab-editor"]').click();renderLines();fillForm();renderImages();recalc();};}
 function toastSaved(){const t=new bootstrap.Toast(document.getElementById('toastSave'),{delay:3000});const now=new Date();document.getElementById('toastSaveMsg').textContent='✅ Preventivo salvato — '+now.toLocaleDateString('it-IT')+' '+now.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});t.show();}
 function newQuote(){const cur={id:nextId(),createdAt:new Date().toISOString(),cliente:'',articolo:'',ddt:'',telefono:'',email:'',dataInvio:'',dataAcc:'',dataScad:'',note:'',lines:[],images:[]};setCurrent(cur);fillForm();renderLines();renderImages();recalc();}
