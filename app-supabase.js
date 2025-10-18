@@ -1,98 +1,17 @@
-
-// app-supabase.js — v4.0.1
-(() => {
-  'use strict';
-  const supabaseUrl = window.SUPABASE_URL;
-  const supabaseKey = window.SUPABASE_KEY;
-
-  function defineFallbacks(reason){
-    // definisco funzioni "sicure" per non far crashare il resto dell'app
-    window.saveToSupabase = async function(){ throw new Error(reason || 'Supabase non configurato'); };
-    window.loadArchiveSupabase = async function(){ return []; };
-    console.warn(reason || 'Supabase non configurato');
-  }
-
-  if (!supabaseUrl || !supabaseKey || typeof window.supabase==='undefined') {
-    defineFallbacks('Supabase config mancante');
-    return;
-  }
-
-  const { createClient } = window.supabase;
-  const sb = createClient(supabaseUrl, supabaseKey);
-  window.supabaseClient = sb; // opzionale
-
-  function EURO(n){ try{ return (n||0).toLocaleString('it-IT',{style:'currency',currency:'EUR'});}catch(e){return String(n||0);} }
-
-  function computeProgress(lines){
-    let toDo=0,done=0;
-    (lines||[]).forEach(r=>{
-      const has=(r.desc||'').trim()!=='' || (+r.qty||0)>0 || (+r.price||0)>0;
-      if(has){ toDo++; if(r.doneDate && String(r.doneDate).trim()) done++; }
-    });
-    return toDo ? Math.round((done/toDo)*100) : 0;
-  }
-
-  function serializeCurrent(){
-    let cur=null;
-    try{ cur = JSON.parse(localStorage.getItem('elip_current')||'null'); }catch(_){ cur=null; }
-    if(!cur) return null;
-    const imponibile = (cur.lines||[]).reduce((s,r)=>s+(+r.qty||0)*(+r.price||0),0);
-    const totale = imponibile*1.22;
-    const progress = computeProgress(cur.lines||[]);
-
-    return {
-      cliente: cur.cliente||null,
-      articolo: cur.articolo||null,
-      ddt: cur.ddt||null,
-      telefono: cur.telefono||null,
-      email: cur.email||null,
-      data_invio: cur.dataInvio||null,
-      data_accettazione: cur.dataAcc||null,
-      data_scadenza: cur.dataScad||null,
-      note: cur.note||null,
-      linee: cur.lines||[],
-      images: cur.images||[],
-      totale,
-      avanzamento_commessa: progress,
-    };
-  }
-
-  async function saveToSupabase(){
-    const rec = serializeCurrent();
-    if(!rec) throw new Error('Nessun record da salvare');
-    let current=null;
-    try{ current = JSON.parse(localStorage.getItem('elip_current')||'null'); }catch(_){}
-    const hasNumero = current && current.id && /^ELP-/.test(current.id);
-
-    if(hasNumero){
-      const { data, error } = await sb
-        .from('preventivi')
-        .update(rec)
-        .eq('numero', current.id)
-        .select()
-        .single();
-      if(error) throw error;
-      return { data };
-    }else{
-      const { data, error } = await sb
-        .from('preventivi')
-        .insert(rec)
-        .select()
-        .single();
-      if(error) throw error;
-      return { data };
-    }
-  }
-
-  async function loadArchiveSupabase(){
-    const { data, error } = await sb
-      .from('preventivi')
-      .select('numero, created_at, cliente, articolo, ddt, totale, data_accettazione, data_scadenza, avanzamento_commessa, is_chiusa')
-      .order('created_at',{ascending:false});
-    if(error){ console.warn(error); return []; }
-    return data || [];
-  }
-
-  window.saveToSupabase = saveToSupabase;
-  window.loadArchiveSupabase = loadArchiveSupabase;
-})();
+if(!window.__ELIP_SUPA_LOADED){window.__ELIP_SUPA_LOADED=true;
+let supa=null;
+function supaClient(){if(supa)return supa;try{const c=window.supabaseConfig||{};supa=window.supabase.createClient(c.url,c.anon);window.supa=supa;}catch(e){console.error('[Supabase] createClient',e);supa=null;}return supa;}
+window.saveToSupabase=async function(archiveAfter){
+  const cli=supaClient();if(!cli){alert('Supabase non configurato');return;}
+  const cur=JSON.parse(localStorage.getItem('elip_current')||'null');if(!cur){alert('Nessun preventivo');return;}
+  const imp=(cur.lines||[]).reduce((s,r)=>s+(+r.qty||0)*(+r.price||0),0);const totale=imp*1.22;
+  const payload={numero:cur.id,cliente:cur.cliente||null,articolo:cur.articolo||null,ddt:cur.ddt||null,telefono:cur.telefono||null,email:cur.email||null,data_invio:cur.dataInvio||null,data_accettazione:cur.dataAcc||null,data_scadenza:cur.dataScad||null,note:cur.note||null,linee:cur.lines||[],images:cur.images||[],totale};
+  const ex=await cli.from('preventivi').select('id').eq('numero',cur.id).maybeSingle();
+  if(ex.error&&ex.error.code!=='PGRST116'){console.error('[Supabase] read',ex.error);return;}
+  if(ex.data){const u=await cli.from('preventivi').update(payload).eq('id',ex.data.id);if(u.error){alert('Errore aggiornamento: '+u.error.message);return;}}
+  else{const ins=await cli.from('preventivi').insert(payload);if(ins.error){alert('Errore inserimento: '+ins.error.message+'\nEsegui schema.sql per colonne JSONB.');return;}}
+  if(typeof toastSaved==='function')toastSaved();await window.loadArchiveSupabase();if(archiveAfter){const t=document.querySelector('[data-bs-target="#tab-archivio"]');if(t)t.click();}
+};
+window.loadArchiveSupabase=async function(){const cli=supaClient();if(!cli)return[];const {data,error}=await cli.from('preventivi').select('*').order('created_at',{ascending:false});if(error){console.error('[Supabase] load',error);localStorage.setItem('elip_archive','[]');return[];}localStorage.setItem('elip_archive',JSON.stringify(data||[]));return data||[];};
+window.subscribeRealtime=function(){const cli=supaClient();if(!cli)return;cli.channel('preventivi_changes').on('postgres_changes',{event:'*',schema:'public',table:'preventivi'},()=>{window.loadArchiveSupabase().then(()=>{if(typeof renderArchiveLocal==='function')renderArchiveLocal();});}).subscribe();};
+}
