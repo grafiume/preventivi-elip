@@ -1,13 +1,25 @@
 
-// app-supabase.js — v4.0
+// app-supabase.js — v4.0.1
 (() => {
   'use strict';
   const supabaseUrl = window.SUPABASE_URL;
   const supabaseKey = window.SUPABASE_KEY;
-  if (!supabaseUrl || !supabaseKey) { console.warn('Supabase config mancante'); return; }
+
+  function defineFallbacks(reason){
+    // definisco funzioni "sicure" per non far crashare il resto dell'app
+    window.saveToSupabase = async function(){ throw new Error(reason || 'Supabase non configurato'); };
+    window.loadArchiveSupabase = async function(){ return []; };
+    console.warn(reason || 'Supabase non configurato');
+  }
+
+  if (!supabaseUrl || !supabaseKey || typeof window.supabase==='undefined') {
+    defineFallbacks('Supabase config mancante');
+    return;
+  }
+
   const { createClient } = window.supabase;
   const sb = createClient(supabaseUrl, supabaseKey);
-  window.supabase = sb;
+  window.supabaseClient = sb; // opzionale
 
   function EURO(n){ try{ return (n||0).toLocaleString('it-IT',{style:'currency',currency:'EUR'});}catch(e){return String(n||0);} }
 
@@ -29,7 +41,6 @@
     const progress = computeProgress(cur.lines||[]);
 
     return {
-      // numero: NON lo mandiamo all'insert per lasciare fare al trigger
       cliente: cur.cliente||null,
       articolo: cur.articolo||null,
       ddt: cur.ddt||null,
@@ -42,16 +53,14 @@
       linee: cur.lines||[],
       images: cur.images||[],
       totale,
-      avanzamento_commessa: progress, // se esiste la colonna
+      avanzamento_commessa: progress,
     };
   }
 
-  async function saveToSupabase(forceInsert=false){
+  async function saveToSupabase(){
     const rec = serializeCurrent();
-    if(!rec){ throw new Error('Nessun record da salvare'); }
-
-    // Se il current ha già un numero ELP-..., aggiorniamo; altrimenti inseriamo
-    let current = null;
+    if(!rec) throw new Error('Nessun record da salvare');
+    let current=null;
     try{ current = JSON.parse(localStorage.getItem('elip_current')||'null'); }catch(_){}
     const hasNumero = current && current.id && /^ELP-/.test(current.id);
 
