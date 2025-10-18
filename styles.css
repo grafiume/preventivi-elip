@@ -1,5 +1,5 @@
 
-/* v3.0 UI tweaks */
+/* v3.1 UI tweaks */
 :root{
   --elip-green:#198754;
   --elip-red:#dc3545;
@@ -7,16 +7,21 @@
   --elip-gray:#6c757d;
   --elip-amber:#ffc107;
 }
-/* Stato dot button */
+/* Stato dot button (righe) */
 .btn-state-dot{
   width:18px;height:18px;border-radius:50%;
   border:2px solid var(--elip-red);
-  display:inline-block; background:#fff; vertical-align:middle;
+  display:inline-inline; background:#fff; vertical-align:middle;
   cursor:pointer;
 }
 .btn-state-dot.green{ border-color:var(--elip-green); background:var(--elip-green); }
 .btn-state-dot.red{ border-color:var(--elip-red); background:#fff; }
 .btn-state-dot:focus{ outline: none; box-shadow: 0 0 0 0.2rem rgba(13,110,253,.25); }
+
+/* Data accettazione tiny dot */
+#accDot{ width:14px; height:14px; border-radius:50%; border:2px solid var(--elip-red); display:inline-block; margin-left:8px; vertical-align:middle; cursor:pointer; }
+#accDot.green{ border-color:var(--elip-green); background:var(--elip-green); }
+#accDot.red{ border-color:var(--elip-red); background:#fff; }
 
 /* Image thumbs */
 #imgPreview .thumb-wrap{ position:relative; display:inline-block; }
