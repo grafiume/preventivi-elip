@@ -331,7 +331,7 @@ function renderArchiveLocal(){
       if(rec.data_scadenza){
         const d=new Date(rec.data_scadenza); d.setHours(0,0,0,0);
         const diff = Math.round((d - today)/(1000*60*60*24));
-        if (diff <= 5 && diff >= 0) scadTd = `<span class="badge badge-deadline">Scade in ${diff} g</span>`;
+        if (diff <= 5 && diff >= 0) { scadTd = `<span class="badge badge-deadline">Scade in ${diff} g</span>`; }
         else if(diff < 0) scadTd = `<span class="badge bg-danger">Scaduto</span>`;
         else scadTd = new Date(rec.data_scadenza).toLocaleDateString('it-IT');
       }
