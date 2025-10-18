@@ -1,14 +1,14 @@
 // Supabase integration v6.1-SB (guarded)
 if(!window.__ELIP_SUPA_LOADED){ window.__ELIP_SUPA_LOADED=true;
-let supa = null;
-function supaClient(){
-  if(supa) return supa;
+let supa = null; window.supa = supa;
+window.supaClient = function (){
+  if(supa) window.supa = supa; return supa;
   const cfg = window.supabaseConfig;
   supa = supabase.createClient(cfg.url, cfg.anon);
-  return supa;
+  window.supa = supa; return supa;
 }
 
-async function uploadImagesIfNeeded(idPreventivo, images){
+window.uploadImagesIfNeeded = async function (idPreventivo, images){
   const cli = supaClient();
   const uploaded = [];
   for(const src of (images||[])){
@@ -26,7 +26,7 @@ async function uploadImagesIfNeeded(idPreventivo, images){
   return uploaded;
 }
 
-async function saveToSupabase(archiveAfter){
+window.saveToSupabase = async function (archiveAfter){
   const cli = supaClient();
   const cur = JSON.parse(localStorage.getItem('elip_current'));
   const imponibile = (cur.lines||[]).reduce((s,r)=> s + (r.qty||0)*(r.price||0), 0);
@@ -66,7 +66,7 @@ async function saveToSupabase(archiveAfter){
   if(archiveAfter){ document.querySelector('[data-bs-target=\"#tab-archivio\"]').click(); }
 }
 
-async function loadArchiveSupabase(){
+window.loadArchiveSupabase = async function (){
   const cli = supaClient();
   const { data, error } = await cli.from('preventivi').select('*').order('created_at', { ascending:false });
   if(error){ console.error(error); localStorage.setItem('elip_archive','[]'); return []; }
@@ -74,7 +74,7 @@ async function loadArchiveSupabase(){
   return data || [];
 }
 
-function subscribeRealtime(){
+window.subscribeRealtime = function (){
   const cli = supaClient();
   cli.channel('public:preventivi')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'preventivi' }, () => {

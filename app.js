@@ -407,7 +407,7 @@ function fillForm(){
 
 function init(){
   ensureCatalog(); buildDatalist(); renderCatalog(); renderLines(); fillForm(); renderImages(); recalc(); bindAll();
-  loadArchiveSupabase().then(()=>{ renderArchiveLocal(); subscribeRealtime(); });
+  (window.loadArchiveSupabase ? window.loadArchiveSupabase() : Promise.resolve([])).then(()=>{ if (window.renderArchiveLocal) renderArchiveLocal(); if (window.subscribeRealtime) subscribeRealtime(); });
 }
 document.addEventListener('DOMContentLoaded', init);
 
