@@ -14,13 +14,20 @@
   <script src="config.js"></script>
   <script src="app-supabase.js"></script>
   <script src="app.js"></script>
+  <style>
+    body { background-color: #f8f9fa; }
+    .brand { height: 44px; }
+    .line-row td { vertical-align: middle; }
+    .catalog .list-group-item { cursor:pointer; }
+    .catalog .list-group-item:hover { background:#f0f0f0; }
+  </style>
 </head>
 <body>
 
 <header class="appbar bg-white border-bottom py-2">
   <div class="container-fluid d-flex justify-content-between align-items-center">
     <div class="d-flex align-items-center gap-3">
-      <img src="logo-elip.jpg" class="brand" alt="ELIP" style="height:44px">
+      <img src="logo-elip.jpg" class="brand" alt="ELIP">
       <div>
         <div class="fw-bold">ELIP Tagliente — Preventivi</div>
         <div class="small text-muted" id="quoteId"></div>
@@ -45,12 +52,16 @@
   </ul>
 
   <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white">
+    <!-- ============================
+         TAB EDITOR
+    ============================= -->
     <div class="tab-pane fade show active" id="tab-editor">
       <div class="row g-3">
         <aside class="col-12 col-lg-3">
           <div class="card h-100">
-            <div class="card-header bg-light">
+            <div class="card-header bg-light d-flex justify-content-between align-items-center">
               <span class="fw-semibold">Catalogo voci</span>
+              <span class="small text-muted">Clicca per aggiungere</span>
             </div>
             <div class="card-body p-2">
               <input id="catalogSearch" class="form-control form-control-sm mb-2" placeholder="Cerca…">
@@ -64,17 +75,35 @@
         </aside>
 
         <section class="col-12 col-lg-9">
-          <div id="preventivoContainer"></div>
+          <table class="table table-sm table-bordered align-middle mb-0" id="preventivoTable">
+            <thead class="table-light">
+              <tr>
+                <th style="width: 80px;">Codice</th>
+                <th>Descrizione</th>
+                <th style="width: 100px;">Prezzo</th>
+                <th style="width: 40px;"></th>
+              </tr>
+            </thead>
+            <tbody id="preventivoBody"></tbody>
+          </table>
         </section>
       </div>
     </div>
 
+    <!-- ============================
+         TAB ARCHIVIO
+    ============================= -->
     <div class="tab-pane fade" id="tab-archivio">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <input id="filterQuery" class="form-control" placeholder="Cerca per cliente…" style="max-width:300px">
+        <button class="btn btn-outline-secondary btn-sm" id="btnReloadArch">Aggiorna</button>
+      </div>
       <div class="table-responsive">
         <table class="table table-hover align-middle" id="archTable">
           <thead class="table-light">
             <tr>
-              <th>N°</th><th>Data</th><th>Cliente</th><th>Articolo</th><th>DDT</th><th>Totale</th><th>Accett.</th><th>Scadenza</th><th>Stato</th><th></th>
+              <th>N°</th><th>Data</th><th>Cliente</th><th>Articolo</th><th>DDT</th>
+              <th>Totale</th><th>Accett.</th><th>Scadenza</th><th>Stato</th><th></th>
             </tr>
           </thead>
           <tbody id="archBody"></tbody>
