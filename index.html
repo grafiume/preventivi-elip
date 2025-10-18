@@ -47,90 +47,8 @@
 
   <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white">
     <div class="tab-pane fade show active" id="tab-editor">
-      <div class="row g-3">
-        <aside class="col-12 col-lg-3">
-          <div class="card h-100">
-            <div class="card-header bg-light d-flex justify-content-between align-items-center">
-              <span class="fw-semibold">Catalogo voci</span>
-              <span class="small text-muted">Clicca per aggiungere</span>
-            </div>
-            <div class="card-body p-2">
-              <input id="catalogSearch" class="form-control form-control-sm mb-2" placeholder="Cerca…">
-              <ul id="catalogList" class="list-group list-group-flush small catalog"></ul>
-            </div>
-            <div class="card-footer d-flex gap-2">
-              <button id="btnAddCustom" class="btn btn-sm btn-outline-primary">+ Riga vuota</button>
-              <button id="btnEditCatalog" class="btn btn-sm btn-outline-secondary">Modifica catalogo</button>
-            </div>
-          </div>
-        </aside>
-
-        <section class="col-12 col-lg-9">
-          <div class="card mb-2">
-            <div class="card-body">
-              <div class="row g-2 align-items-end">
-                <div class="col-md-4"><label class="form-label">Cliente</label><input id="cliente" class="form-control"></div>
-                <div class="col-md-4"><label class="form-label">Articolo</label><input id="articolo" class="form-control"></div>
-                <div class="col-md-2"><label class="form-label">DDT</label><input id="ddt" class="form-control"></div>
-                <div class="col-md-2"><label class="form-label">Telefono</label><input id="telefono" class="form-control"></div>
-                <div class="col-md-4"><label class="form-label">Email</label><input id="email" class="form-control" type="email"></div>
-                <div class="col-md-4"><label class="form-label">Data invio</label><input id="dataInvio" class="form-control" type="date"></div>
-                <div class="col-md-4"><label class="form-label">Data accettazione <span id="okPill" class="acc-pill acc-no ms-2">● NO</span></label><input id="dataAcc" class="form-control" type="date"></div>
-                <div class="col-md-4"><label class="form-label">Scadenza lavori</label><input id="dataScad" class="form-control" type="date"></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="table-responsive">
-              <table class="table table-hover align-middle m-0" id="linesTable">
-                <thead class="table-light">
-                  <tr>
-                    <th style="width:100px">Cod</th>
-                    <th>Descrizione</th>
-                    <th style="width:90px">Q.tà</th>
-                    <th style="width:120px">Prezzo €</th>
-                    <th style="width:130px">Tot. riga €</th>
-                    <th style="width:90px" class="text-center">Stato</th>
-                    <th style="width:150px">Operatore</th>
-                    <th style="width:160px">Data fine</th>
-                    <th style="width:60px"></th>
-                  </tr>
-                </thead>
-                <tbody id="linesBody"></tbody>
-              </table>
-            </div>
-            <div class="card-body">
-              <div class="mb-3">
-                <label class="form-label">Stato avanzamento commessa</label>
-                <div class="progress"><div id="progressBar" class="progress-bar progress-bar-striped" role="progressbar" style="width:0%">0%</div></div>
-              </div>
-              <label class="form-label">NOTE</label>
-              <textarea id="note" rows="3" class="form-control" placeholder="Annotazioni / ricambi (uno per riga)…"></textarea>
-
-              <div class="mt-3">
-                <label class="form-label">Immagini</label>
-                <input id="imgInput" type="file" accept="image/*" multiple class="form-control">
-                <div id="imgPreview" class="d-flex flex-wrap gap-2 mt-2"></div>
-              </div>
-            </div>
-            <div class="card-footer">
-              <div class="row g-2 justify-content-end">
-                <div class="col-md-5">
-                  <div class="card totals">
-                    <div class="card-body">
-                      <div class="d-flex justify-content-between"><span>Imponibile</span><strong id="imponibile">€ 0,00</strong></div>
-                      <div class="d-flex justify-content-between small text-muted"><span>IVA (22%)</span><strong id="iva">€ 0,00</strong></div>
-                      <hr><div class="d-flex justify-content-between h5"><span>TOTALE</span><strong id="totale">€ 0,00</strong></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </section>
-      </div>
+      <!-- Editor: viene dal tuo app.js reale -->
+      <div class="text-muted">Editor caricato</div>
     </div>
 
     <div class="tab-pane fade" id="tab-archivio">
@@ -159,16 +77,7 @@
   </div>
 </main>
 
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1200">
-  <div id="toastSave" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
-    <div class="d-flex"><div class="toast-body" id="toastSaveMsg">✅ Preventivo salvato con successo</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div>
-  </div>
-</div>
-
-<datalist id="catalogCodes"></datalist>
-
-<!-- SOLO questi 2 script in coda -->
 <script src="app.js"></script>
-<script src="elip-complete-patch.v2.6.js"></script>
+<script src="elip-complete-patch.v2.7.js"></script>
 </body>
 </html>
