@@ -90,7 +90,8 @@ function computeAccCounters(a){
     const pct = percentFromRecord(r);
     if(accOk && pct===100) closed++;
   });
-} — Da accettare: ${no}`;}
+}
+
 function statoCellHTML(pct){
   if(pct>=100) return '100% <span class="badge bg-success ms-2">CHIUSA</span>';
   if(pct<=0) return '0% <span class="badge bg-secondary ms-2">NON AVVIATA</span>';
