@@ -100,7 +100,7 @@
     const pct = toDo ? Math.round((done/toDo)*100) : 0;
     const bar = $('#progressBar');
     if (bar) { bar.style.width = pct+'%'; bar.textContent = pct+'%'; }
-    updateDeadlineUI();
+    try{ updateDeadlineUI(); }catch{}
   }
   function recalcTotals(){
     const c = initCur();
@@ -682,12 +682,19 @@ Totale: ${EURO(tot)}`);
 
 
 // ===== Scadenza & Alert =====
-function getProgressPctFromCur(){
-  const c = initCur();
-  let toDo=0, done=0;
-  (c.lines||[]).forEach(r => {
-    const has = (r.desc||'').trim()!=='' || (+r.qty||0)>0 || (+r.price||0)>0;
-    if (has) { toDo++; if (r.doneDate && String(r.doneDate).trim()) done++; }
+
+  function getProgressPctFromCur(){
+    // Legge dallo storage per evitare dipendenze di ordine
+    let c = null;
+    try { c = JSON.parse(localStorage.getItem('elip_current')||'null'); } catch {}
+    if (!c || !Array.isArray(c.lines)) return 0;
+    let toDo=0, done=0;
+    for (const r of c.lines){
+      const has = (r?.desc||'').toString().trim()!=='' || (+r?.qty||0)>0 || (+r?.price||0)>0;
+      if (has) { toDo++; if (r?.doneDate && String(r.doneDate).trim()) done++; }
+    }
+    return toDo ? Math.round((done/toDo)*100) : 0;
+  }
   });
   return toDo ? Math.round((done/toDo)*100) : 0;
 }
@@ -738,15 +745,30 @@ function applyScadenzaInputStyle(isWarn){
   el.style.color = isWarn ? '#dc3545' : '';
   el.style.fontWeight = isWarn ? '600' : '';
 }
-function updateDeadlineUI(){
-  const c = initCur();
-  const pct = getProgressPctFromCur();
-  const dStr = c.dataScad || (document.getElementById('dataScad')?.value || '');
-  const d = parseISODate(dStr);
-  if (!d || pct===100){
-    hideDeadlineAlert();
-    applyScadenzaInputStyle(false);
-    return;
+
+  function updateDeadlineUI(){
+    let c = null; try { c = JSON.parse(localStorage.getItem('elip_current')||'null'); } catch {}
+    c = c || {};
+    const pct = getProgressPctFromCur();
+    const dStr = c.dataScad || (document.getElementById('dataScad')?.value || '');
+    const d = parseISODate(dStr);
+    if (!d || pct===100){
+      hideDeadlineAlert();
+      applyScadenzaInputStyle(false);
+      return;
+    }
+    const today = new Date();
+    const daysLeft = diffDaysUTC(d, today);
+    if (daysLeft < 0){
+      applyScadenzaInputStyle(true);
+      showDeadlineAlert(`<strong>Attenzione:</strong> scadenza <u>già passata</u> (${DTIT(dStr)}).`);
+    } else if (daysLeft <= 5){
+      applyScadenzaInputStyle(true);
+      showDeadlineAlert(`<strong>Attenzione:</strong> mancano <u>${daysLeft} giorni</u> alla scadenza lavori (${DTIT(dStr)}).`);
+    } else {
+      hideDeadlineAlert();
+      applyScadenzaInputStyle(false);
+    }
   }
   const today = new Date();
   const daysLeft = diffDaysUTC(d, today); // positive = in futuro
@@ -777,13 +799,23 @@ function ensureScadenzaBanner(){
   }
   return bn;
 }
-function updateDaysLeftBanner(){
-  const c = initCur();
-  const pct = getProgressPctFromCur();
-  const bn = ensureScadenzaBanner();
-  if (!bn) return;
-  const d = c.dataScad ? new Date(c.dataScad) : null;
-  if (!d || isNaN(d) || pct===100){ bn.textContent=''; return; }
+
+  function updateDaysLeftBanner(){
+    let c = null; try { c = JSON.parse(localStorage.getItem('elip_current')||'null'); } catch {}
+    c = c || {};
+    const pct = getProgressPctFromCur();
+    const bn = ensureScadenzaBanner();
+    if (!bn) return;
+    const dVal = c.dataScad || (document.getElementById('dataScad')?.value || '');
+    const d = dVal ? new Date(dVal) : null;
+    if (!d || isNaN(d) || pct===100){ bn.textContent=''; return; }
+    const today = new Date();
+    const MS = 86400000;
+    const daysLeft = Math.round((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) - Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/MS);
+    if (daysLeft < 0){ bn.innerHTML = '<span class="text-danger fw-bold">Scaduta</span>'; }
+    else if (daysLeft <= 5){ bn.innerHTML = `<span class="text-danger fw-semibold">Mancano ${daysLeft} giorni alla scadenza</span>`; }
+    else { bn.textContent=''; }
+  }
   const today = new Date();
   const MS = 86400000;
   const daysLeft = Math.round((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) - Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/MS);
