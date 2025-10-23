@@ -4,6 +4,8 @@
   'use strict';
   let client = null;
   function supa() {
+    // Hardening init
+    if (!window.supabase) throw new Error('Supabase SDK non caricato (verifica CDN)');
     if (client) return client;
     if (!window.supabase || !window.supabase.createClient) throw new Error('Supabase non caricato');
     const cfg = window.supabaseConfig || {};
@@ -181,8 +183,12 @@
   // ---------- Archive ----------
   async function loadArchive(){
     const c = supa();
-    const { data, error } = await c.from('preventivi').select('*').order('created_at', { ascending: false });
-    if (error) { console.warn('[supabase] loadArchive error:', error); try { localStorage.setItem('elip_archive', '[]'); } catch {} ; return []; }
+    const { data, error, status } = await c.from('preventivi').select('*').order('created_at', { ascending: false });
+    if (error) {
+      console.warn('[supabase] loadArchive error:', {status, error});
+      try { localStorage.setItem('elip_archive', '[]'); } catch {}
+      throw Object.assign(new Error(error.message||'loadArchive failed'), { status, error });
+    }
     try { localStorage.setItem('elip_archive', JSON.stringify(data || [])); } catch {}
     return data || [];
   }

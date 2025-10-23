@@ -124,8 +124,8 @@
     const c = initCur();
     c.lines.push(r);
     setCurLight(c);
-    renderLines(); updateDeadlineUI();
-    recalcTotals(); updateDeadlineUI();
+    renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
+    recalcTotals(); updateDeadlineUI(); updateDaysLeftBanner();
   }
   function renderLines(){
     const c = initCur();
@@ -150,7 +150,7 @@
     });
     body.oninput = onLineEdit;
     body.onclick = onLineClick;
-    recalcTotals(); updateDeadlineUI();
+    recalcTotals(); updateDeadlineUI(); updateDaysLeftBanner();
   }
   function onLineEdit(e){
     const c = initCur();
@@ -171,8 +171,8 @@
     if (e.target.classList.contains('line-operator')) c.lines[i].doneBy = e.target.value;
     if (e.target.classList.contains('line-date')) c.lines[i].doneDate = e.target.value;
     setCurLight(c);
-    renderLines(); updateDeadlineUI();
-    recalcTotals(); updateDeadlineUI();
+    renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
+    recalcTotals(); updateDeadlineUI(); updateDaysLeftBanner();
   }
   function onLineClick(e){
     const btn = e.target.closest('button[data-del]');
@@ -181,7 +181,7 @@
       const c = initCur();
       c.lines.splice(i,1);
       setCurLight(c);
-      renderLines(); updateDeadlineUI();
+      renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
     }
   }
 
@@ -304,6 +304,18 @@
       const accepted = !!(r.data_accettazione);
       if (mode==='ok' && !accepted) return false;
       if (mode==='no' && accepted) return false;
+      if (mode==='due'){
+        if (!accepted) return false; // solo accettati
+        const pctTmp = progressPctFromLines(r.linee);
+        if (pctTmp>=100) return false;
+        const dStr = r.data_scadenza;
+        if (!dStr) return false;
+        const d = new Date(dStr); if (isNaN(d)) return false;
+        const today = new Date();
+        const MS=86400000;
+        const daysLeft = Math.round((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) - Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/MS);
+        if (daysLeft>5) return false;
+      }
       if (q && !(hitTxt(r.cliente)||hitTxt(r.articolo)||hitTxt(r.numero)||hitTxt(r.ddt))) return false;
       return true;
     });
@@ -358,7 +370,7 @@
     };
     setCurLight(cur);
     fillForm();
-    renderLines(); updateDeadlineUI();
+    renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
     try { window.dbApi?.loadPhotosFor(cur.id).then(list => setServerThumbs(list)); } catch {}
     const btn = document.querySelector('[data-bs-target="#tab-editor"]');
     if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
@@ -505,7 +517,7 @@ Totale: ${EURO(tot)}`);
     const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
     ids.forEach(id => { const el = $('#'+id); if (el) el.value = c[id] || ''; });
     const q = $('#quoteId'); if (q) q.textContent = c.id;
-    updateAccPill(); updateProgress(); recalcTotals(); updateDeadlineUI();
+    updateAccPill(); updateProgress(); recalcTotals(); updateDeadlineUI(); updateDaysLeftBanner();
   }
   function snapshotFormToCur(){
     const c = initCur();
@@ -532,7 +544,7 @@ Totale: ${EURO(tot)}`);
     if (typeof window.__elipResetPhotos === 'function') window.__elipResetPhotos(); else { /* fallback */ }
     const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
     ids.forEach(id => { const el = $('#'+id); if (el) el.value = ''; });
-    fillForm(); renderLines(); updateDeadlineUI(); focusFirstField();
+    fillForm(); renderLines(); updateDeadlineUI(); updateDaysLeftBanner(); focusFirstField();
   }
 
   function toastSaved(){
@@ -576,7 +588,7 @@ Totale: ${EURO(tot)}`);
       const c = initCur();
       setCurLight({ id:c.id, createdAt:c.createdAt, cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] });
       if (typeof window.__elipResetPhotos === 'function') window.__elipResetPhotos();
-      fillForm(); renderLines(); updateDeadlineUI(); focusFirstField();
+      fillForm(); renderLines(); updateDeadlineUI(); updateDaysLeftBanner(); focusFirstField();
       const btn = document.querySelector('[data-bs-target="#tab-editor"]');
       if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
     });
@@ -588,6 +600,7 @@ Totale: ${EURO(tot)}`);
         toastSaved(); savedModal();
         try { await window.dbApi.loadArchiveRetry?.(); } catch {}
         window.renderArchiveLocal?.();
+        ensureInScadenzaButton();
         const t = document.querySelector('[data-bs-target="#tab-archivio"]');
         if (t) { try { new bootstrap.Tab(t).show(); } catch { t.click(); } }
         clearEditorToNew();
@@ -645,8 +658,8 @@ Totale: ${EURO(tot)}`);
 
     $('#dataAcc')?.addEventListener('input', updateAccPill);
     $('#dataAcc')?.addEventListener('change', updateAccPill);
-    $('#dataScad')?.addEventListener('input', updateDeadlineUI);
-    $('#dataScad')?.addEventListener('change', updateDeadlineUI);
+    $('#dataScad')?.addEventListener('input', ()=>{ updateDeadlineUI(); updateDaysLeftBanner(); });
+    $('#dataScad')?.addEventListener('change', ()=>{ updateDeadlineUI(); updateDaysLeftBanner(); });
   }
 
   async function init(){
@@ -656,9 +669,10 @@ Totale: ${EURO(tot)}`);
       renderCatalog('');
       initCur();
       fillForm();
-      renderLines(); updateDeadlineUI();
+      renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
       if (window.dbApi?.loadArchive) await window.dbApi.loadArchive();
       renderArchiveTable();
+      ensureInScadenzaButton();
       focusFirstField();
     } catch (e) { console.error('[init failed]', e); }
   }
@@ -746,4 +760,53 @@ function updateDeadlineUI(){
     hideDeadlineAlert();
     applyScadenzaInputStyle(false);
   }
+}
+
+
+// ===== Banner giorni alla scadenza (sotto il campo) =====
+function ensureScadenzaBanner(){
+  const input = document.getElementById('dataScad');
+  if (!input) return null;
+  // place banner just after input
+  let bn = document.getElementById('daysLeftBanner');
+  if (!bn){
+    bn = document.createElement('div');
+    bn.id = 'daysLeftBanner';
+    bn.className = 'small mt-1';
+    input.parentElement && input.parentElement.appendChild(bn);
+  }
+  return bn;
+}
+function updateDaysLeftBanner(){
+  const c = initCur();
+  const pct = getProgressPctFromCur();
+  const bn = ensureScadenzaBanner();
+  if (!bn) return;
+  const d = c.dataScad ? new Date(c.dataScad) : null;
+  if (!d || isNaN(d) || pct===100){ bn.textContent=''; return; }
+  const today = new Date();
+  const MS = 86400000;
+  const daysLeft = Math.round((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) - Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/MS);
+  if (daysLeft < 0){ bn.innerHTML = '<span class=\"text-danger fw-bold\">Scaduta</span>'; }
+  else if (daysLeft <= 5){ bn.innerHTML = `<span class=\"text-danger fw-semibold\">Mancano ${daysLeft} giorni alla scadenza</span>`; }
+  else { bn.textContent=''; }
+}
+
+
+function ensureInScadenzaButton(){
+  const grp = document.querySelector('#tab-archivio .btn-group');
+  if (!grp || document.getElementById('fltDue')) return;
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-outline-warning';
+  btn.id = 'fltDue';
+  btn.textContent = 'In scadenza ⏰';
+  grp.appendChild(btn);
+  btn.addEventListener('click', (e)=>{
+    e.preventDefault();
+    document.getElementById('fltAll')?.classList.remove('active');
+    document.getElementById('fltOk')?.classList.remove('active');
+    document.getElementById('fltNo')?.classList.remove('active');
+    btn.classList.add('active');
+    renderArchiveTable();
+  });
 }
