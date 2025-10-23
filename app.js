@@ -133,7 +133,6 @@
   }
 
   // ---- ARCHIVIO table -------------------------------------------------------
-  const DTIT = s => s ? new Date(s).toLocaleDateString('it-IT') : '';
   function computeAccCounters(arr){
     let ok=0,no=0;
     (arr||[]).forEach(r => ((r.data_accettazione||'').toString().trim()? ok++ : no++));
