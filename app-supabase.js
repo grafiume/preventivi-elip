@@ -1,8 +1,8 @@
 
-/* Preventivi ELIP — app-supabase.js (2025-10-23, foto via API nuove)
-   - Nessuna colonna 'photos' nel payload (evita 400 PGRST204)
-   - Upload foto leggendo dalla nuova coda __elipGetUploadFiles() con fallback
-   - Refresh Archivio dopo Salva
+/* Preventivi ELIP — app-supabase.js (2025-10-23 PHOTOS+THUMBS+LOAD)
+   - Nessuna colonna 'photos' nel payload preventivi
+   - Upload foto + thumbnail 164x164 -> storage bucket 'photos' (path: <numero>/file.ext e <numero>/thumbs/file.jpg)
+   - loadPhotosFor(numero): legge da tabella 'photos' e ritorna thumb_url/url
 */
 (function(){
   'use strict';
@@ -92,19 +92,90 @@
     }
   }
 
+  // ---- thumbnails client-side ----
+  async function fileToDataURL(file){
+    const fr = new FileReader();
+    return await new Promise((res,rej)=>{ fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(file); });
+  }
+  async function dataURLToThumbBlob(dataUrl, size=164){
+    const img = new Image();
+    img.src = dataUrl; await img.decode();
+    const ratio = Math.max(size / img.width, size / img.height);
+    const w = Math.round(img.width * ratio);
+    const h = Math.round(img.height * ratio);
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.clearRect(0,0,size,size);
+    ctx.drawImage(img, (size - w)/2, (size - h)/2, w, h);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+    return blob;
+  }
+
   async function uploadPhoto(file, numero){
     const c = supa();
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const fname = `${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const base = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    const fname = `${base}.${ext}`;
     const path = `${numero}/${fname}`;
+
+    // Upload originale
     await withRetry(async () => {
       const { error } = await c.storage.from('photos').upload(path, file, { cacheControl: '3600', upsert: false });
       if (error) throw error;
     });
+
+    // Thumb 164x164
+    let thumb_url = null;
+    try {
+      const dataUrl = await fileToDataURL(file);
+      const thumbBlob = await dataURLToThumbBlob(dataUrl, 164);
+      const tpath = `${numero}/thumbs/${base}.jpg`;
+      await withRetry(async () => {
+        const { error } = await c.storage.from('photos').upload(tpath, thumbBlob, { cacheControl: '3600', upsert: false, contentType:'image/jpeg' });
+        if (error) throw error;
+      });
+      const { data: t } = c.storage.from('photos').getPublicUrl(tpath);
+      thumb_url = t?.publicUrl || null;
+    } catch (e) { console.warn('[thumb fail]', e?.message||e); }
+
+    // URL originale pubblico
     const { data: pub } = c.storage.from('photos').getPublicUrl(path);
     const url = pub?.publicUrl || null;
-    try { await c.from('photos').insert([{ record_num: numero, path, url }]); } catch(_) {}
-    return { path, url };
+
+    // salva in tabella 'photos' se esiste
+    try {
+      const row = { record_num: numero, path, url, thumb_url };
+      await c.from('photos').insert([row]);
+    } catch(_) {}
+
+    return { path, url, thumb_url };
+  }
+
+  async function loadPhotosFor(numero){
+    const c = supa();
+    try {
+      const { data, error } = await c
+        .from('photos')
+        .select('url, thumb_url, path')
+        .eq('record_num', numero)
+        .order('created_at', { ascending: true });
+      if (error) return [];
+      const urls = (data||[]).map(r => r.thumb_url || deriveThumbFromPath(r.path) || r.url).filter(Boolean);
+      return urls;
+    } catch { return []; }
+  }
+  function deriveThumbFromPath(path){
+    if (!path) return null;
+    const m = path.match(/^([^/]+)\/([^/]+)\.([a-z0-9]+)$/i);
+    if (!m) return null;
+    const numero = m[1];
+    const base = m[2];
+    // thumb path:
+    const tpath = `${numero}/thumbs/${base}.jpg`;
+    const { data } = supa().storage.from('photos').getPublicUrl(tpath);
+    return data?.publicUrl || null;
   }
 
   async function loadArchive(){
@@ -147,7 +218,7 @@
       return false;
     }
 
-    // Foto (best-effort) dalla coda nuova, con fallback legacy
+    // Upload queue (best-effort)
     const queueFiles = (typeof window.__elipGetUploadFiles === 'function')
       ? window.__elipGetUploadFiles()
       : (Array.isArray(window.__elipPhotosQueue) ? window.__elipPhotosQueue : []);
@@ -163,7 +234,6 @@
       try { window.renderArchiveLocal(); } catch (_) {}
     }
 
-    // Tab Archivio se richiesto
     if (archiveAfter) {
       const t = document.querySelector('[data-bs-target="#tab-archivio"]');
       if (t) { try { new bootstrap.Tab(t).show(); } catch { t.click(); } }
@@ -172,5 +242,5 @@
     return true;
   }
 
-  window.dbApi = { supa, uploadPhoto, loadArchive, loadArchiveRetry, subscribeRealtime, saveToSupabase };
+  window.dbApi = { supa, uploadPhoto, loadPhotosFor, loadArchive, loadArchiveRetry, subscribeRealtime, saveToSupabase };
 })();

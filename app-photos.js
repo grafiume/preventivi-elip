@@ -1,22 +1,22 @@
 
-/* Preventivi ELIP — app-photos.js (2025-10-23 HOTFIX)
-   - Coda foto senza duplicati (compatibile con legacy __elipPhotosQueue = File[])
-   - Griglia 164x164 con bottone “×” per rimuovere
-   - Clic anteprima apre il modal #imgModal con l'immagine intera
-   - Espone __elipGetUploadFiles() e __elipClearUploadQueue()
+/* Preventivi ELIP — app-photos.js (2025-10-23 PREVIEW+SERVER)
+   - Coda locale senza duplicati (anteprime 164x164, bottone “×” per rimuovere)
+   - Visualizzazione foto "server" (sola lettura) in griglia 164x164
+   - Clic su qualsiasi miniatura → apre #imgModal con immagine intera
+   - API: __elipGetUploadFiles(), __elipClearUploadQueue(), __elipShowServerPhotos(urls[])
 */
 (function(){
   'use strict';
 
   const $ = (s, r=document) => r.querySelector(s);
 
-  // ---------- Internal state ----------
+  // ---------- Internal state for LOCAL uploads ----------
   let items = [];               // [{id,file,key,thumb,dataUrl}]
   const indexByKey = new Map(); // key -> idx
 
   function fileKey(f){ return `${f?.name||'?' }|${f?.size||0}|${f?.lastModified||0}`; }
 
-  // ---------- File helpers ----------
+  // ---------- Helpers ----------
   function readFileAsDataURL(file){
     return new Promise((res,rej)=>{
       const fr = new FileReader();
@@ -40,16 +40,16 @@
     return canvas.toDataURL('image/jpeg', 0.85);
   }
 
-  // ---------- Queue ops ----------
+  // ---------- LOCAL queue ops ----------
   async function addFiles(files){
     const list = Array.from(files||[]).filter(Boolean);
     for (const f of list){
       const key = fileKey(f);
-      if (indexByKey.has(key)) continue; // evita duplicati
+      if (indexByKey.has(key)) continue; // no duplicates
       const dataUrl = await readFileAsDataURL(f);
       const thumb = await makeThumbFromDataURL(dataUrl, 164);
       const id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now()+'_'+Math.random().toString(36).slice(2,8));
-      const item = { id, file: f, key, dataUrl, thumb };
+      const item = { id, file: f, key, dataUrl, thumb, origin:'local' };
       indexByKey.set(key, items.length);
       items.push(item);
     }
@@ -69,13 +69,31 @@
     }
   }
 
-  // ---------- Render ----------
-  function render(){
+  // ---------- Render (local + server) ----------
+  function ensureContainers(){
     const wrap = $('#imgPreview');
-    if (!wrap) return;
-    wrap.innerHTML = '';
+    if (!wrap) return { wrap:null, local:null, server:null };
+    if (!$('#imgPreviewLocal')){
+      const div = document.createElement('div');
+      div.id = 'imgPreviewLocal';
+      div.className = 'imgPreviewGrid';
+      wrap.appendChild(div);
+    }
+    if (!$('#imgPreviewServer')){
+      const div = document.createElement('div');
+      div.id = 'imgPreviewServer';
+      div.className = 'imgPreviewGrid mt-2';
+      wrap.appendChild(div);
+    }
+    return { wrap, local: $('#imgPreviewLocal'), server: $('#imgPreviewServer') };
+  }
+
+  function render(){
+    const { local } = ensureContainers();
+    if (!local) return;
+    local.innerHTML = '';
     for (const it of items){
-      if (!it || !it.thumb) continue;
+      if (!it?.thumb) continue;
       const card = document.createElement('div');
       card.className = 'photo-card';
       const img = document.createElement('img');
@@ -85,9 +103,34 @@
       const btn = document.createElement('button');
       btn.className = 'btn-remove'; btn.type='button'; btn.textContent = '×';
       btn.setAttribute('data-remove-id', it.id);
+      btn.title = 'Rimuovi dalla coda (non elimina dal server)';
       card.appendChild(img);
       card.appendChild(btn);
-      wrap.appendChild(card);
+      local.appendChild(card);
+    }
+  }
+
+  // ---------- Server photos (read-only) ----------
+  function showServerPhotos(urls){
+    const { server } = ensureContainers();
+    if (!server) return;
+    server.innerHTML = '';
+    const list = Array.isArray(urls) ? urls : [];
+    for (const u of list){
+      if (!u) continue;
+      const card = document.createElement('div');
+      card.className = 'photo-card';
+      const img = document.createElement('img');
+      img.src = u; // may already be a small thumb url
+      img.alt = 'Foto server';
+      img.dataset.full = u;
+      // badge: cloud
+      const badge = document.createElement('div');
+      badge.className = 'badge-cloud';
+      badge.textContent = 'cloud';
+      card.appendChild(img);
+      card.appendChild(badge);
+      server.appendChild(card);
     }
   }
 
@@ -124,23 +167,16 @@
   }
 
   // ---------- Public APIs for uploader ----------
-  window.__elipGetUploadFiles = function(){
-    return items.map(x=>x.file).filter(Boolean);
-  };
-  window.__elipClearUploadQueue = function(){
-    items = [];
-    indexByKey.clear();
-    render();
-  };
+  window.__elipGetUploadFiles = function(){ return items.map(x=>x.file).filter(Boolean); };
+  window.__elipClearUploadQueue = function(){ items = []; indexByKey.clear(); render(); };
+  window.__elipShowServerPhotos = function(urls){ showServerPhotos(urls); };
 
-  // ---------- Backward-compat import from legacy queue ----------
+  // ---------- Import legacy queue if present ----------
   async function importLegacy(){
     if (Array.isArray(window.__elipPhotosQueue) && window.__elipPhotosQueue.length){
       const onlyFiles = window.__elipPhotosQueue.filter(f => f && typeof f.name === 'string' && typeof f.size === 'number');
-      window.__elipPhotosQueue = []; // evita doppioni
-      if (onlyFiles.length){
-        await addFiles(onlyFiles);
-      }
+      window.__elipPhotosQueue = []; // avoid dup
+      if (onlyFiles.length){ await addFiles(onlyFiles); }
     }
   }
 
