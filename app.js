@@ -1,5 +1,5 @@
 
-/* Preventivi ELIP — app.js (FINAL v2) */
+/* Preventivi ELIP — app.js (FINAL v4c) */
 (function(){
   'use strict';
   const $ = (s, r=document) => r.querySelector(s);
@@ -76,7 +76,7 @@
   function initCur(){
     let cur = getCur();
     if (!cur) {
-      cur = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
+      cur = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'' , dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
       setCurLight(cur);
     }
     return cur;
@@ -116,7 +116,7 @@
     $('#totale') && ($('#totale').textContent = EURO(tot));
     updateProgress();
     updateAccPill();
-    updateDeadlineUI();
+    updateDeadlineUI(); updateDaysLeftBanner();
   }
 
   // ===== Righe =====
@@ -124,8 +124,8 @@
     const c = initCur();
     c.lines.push(r);
     setCurLight(c);
-    renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
-    recalcTotals(); updateDeadlineUI(); updateDaysLeftBanner();
+    renderLines();
+    recalcTotals();
   }
   function renderLines(){
     const c = initCur();
@@ -171,8 +171,8 @@
     if (e.target.classList.contains('line-operator')) c.lines[i].doneBy = e.target.value;
     if (e.target.classList.contains('line-date')) c.lines[i].doneDate = e.target.value;
     setCurLight(c);
-    renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
-    recalcTotals(); updateDeadlineUI(); updateDaysLeftBanner();
+    renderLines();
+    recalcTotals();
   }
   function onLineClick(e){
     const btn = e.target.closest('button[data-del]');
@@ -181,7 +181,7 @@
       const c = initCur();
       c.lines.splice(i,1);
       setCurLight(c);
-      renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
+      renderLines();
     }
   }
 
@@ -226,7 +226,6 @@
     renderPhotoArea();
   }
   function setServerThumbs(list){
-    // list: [{thumb, full, path}]
     photoItems = photoItems.filter(x => x.origin === 'local');
     for (const obj of (list||[])){
       const id = 'srv_'+(crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2,10));
@@ -249,7 +248,6 @@
       img.dataset.full = it.full || it.thumb;
       card.appendChild(img);
 
-      // X per rimuovere (sia local che server)
       const btn = document.createElement('button');
       btn.type='button'; btn.textContent='×';
       btn.title = (it.origin==='server') ? 'Elimina dal server' : 'Rimuovi dalla coda';
@@ -297,15 +295,17 @@
     try { arr = JSON.parse(localStorage.getItem('elip_archive') || '[]') || []; } catch {}
     const tbody = $('#archBody'); if (!tbody) return;
     const q = ($('#filterQuery')?.value||'').trim().toLowerCase();
-    const mode = ($('#fltOk')?.classList.contains('active') ? 'ok' :
-                  $('#fltNo')?.classList.contains('active') ? 'no' : 'all');
+    const mode = (
+      document.getElementById('fltDue')?.classList.contains('active') ? 'due' :
+      document.getElementById('fltOk')?.classList.contains('active') ? 'ok' :
+      document.getElementById('fltNo')?.classList.contains('active') ? 'no' : 'all');
     const rows = arr.filter(r => {
       const hitTxt = (txt) => (String(txt||'').toLowerCase().includes(q));
       const accepted = !!(r.data_accettazione);
       if (mode==='ok' && !accepted) return false;
       if (mode==='no' && accepted) return false;
       if (mode==='due'){
-        if (!accepted) return false; // solo accettati
+        if (!accepted) return false;
         const pctTmp = progressPctFromLines(r.linee);
         if (pctTmp>=100) return false;
         const dStr = r.data_scadenza;
@@ -332,6 +332,20 @@
         ? `<span class="badge text-bg-primary">Chiusa</span> <span class="small text-muted ms-1">${pct}%</span>`
         : `<span class="badge text-bg-secondary">${pct}%</span>${accBadge}`;
 
+      // scadenza evidenziata se prossima/scaduta e non chiusa
+      const dStr = r.data_scadenza;
+      let dateHtml = DTIT(dStr);
+      if (pct < 100 && dStr){
+        const d = new Date(dStr);
+        if (!isNaN(d)){
+          const today = new Date();
+          const MS = 24*60*60*1000;
+          const daysLeft = Math.round((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) - Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/MS);
+          if (daysLeft <= 5) dateHtml = `<span class="text-danger fw-semibold">${DTIT(dStr)}</span>`;
+          if (daysLeft < 0)  dateHtml = `<span class="text-danger fw-bold">${DTIT(dStr)} (scaduta)</span>`;
+        }
+      }
+
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>${r.numero||''}</td>
@@ -341,7 +355,7 @@
         <td>${r.ddt||''}</td>
         <td class="text-end">${EURO(r.imponibile||0)}</td>
         <td>${DTIT(r.data_accettazione)}</td>
-        <td>${DTIT(r.data_scadenza)}</td>
+        <td>${dateHtml}</td>
         <td>${statoHtml}</td>
         <td><button class="btn btn-sm btn-outline-primary" data-open-num="${r.numero}">Apri</button></td>`;
       tbody.appendChild(tr);
@@ -511,6 +525,117 @@ Totale: ${EURO(tot)}`);
     window.open(link, '_blank', 'noopener');
   }
 
+  // ===== Scadenza & Alert =====
+  function getProgressPctFromCur(){
+    let c = null;
+    try { c = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
+    if (!c || !Array.isArray(c.lines)) return 0;
+    let toDo=0, done=0;
+    for (const r of c.lines){
+      const has = (r?.desc||'').toString().trim()!=='' || (+r?.qty||0)>0 || (+r?.price||0)>0;
+      if (has) { toDo++; if (r?.doneDate && String(r.doneDate).trim()) done++; }
+    }
+    return toDo ? Math.round((done/toDo)*100) : 0;
+  }
+  function parseISODate(v){
+    if (!v) return null;
+    const d = new Date(v);
+    return isNaN(d) ? null : d;
+  }
+  function diffDaysUTC(a,b){
+    const MS = 24*60*60*1000;
+    const ua = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+    const ub = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+    return Math.round((ua - ub)/MS);
+  }
+  function ensureDeadlineAlertContainer(){
+    const table = document.getElementById('linesTable');
+    if (!table) return null;
+    const card = table.closest('.card');
+    if (!card) return null;
+    let host = card.querySelector('.deadline-host');
+    if (!host){
+      host = document.createElement('div');
+      host.className = 'deadline-host';
+      card.insertBefore(host, card.firstChild);
+    }
+    return host;
+  }
+  function showDeadlineAlert(html){
+    const host = ensureDeadlineAlertContainer();
+    if (!host) return;
+    host.innerHTML = '';
+    const div = document.createElement('div');
+    div.id = 'deadlineAlert';
+    div.className = 'alert alert-danger d-flex align-items-center my-2';
+    div.role = 'alert';
+    div.innerHTML = html;
+    host.appendChild(div);
+  }
+  function hideDeadlineAlert(){
+    const el = document.getElementById('deadlineAlert');
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+  function applyScadenzaInputStyle(isWarn){
+    const el = document.getElementById('dataScad');
+    if (!el) return;
+    el.classList.toggle('is-invalid', !!isWarn);
+    el.style.color = isWarn ? '#dc3545' : '';
+    el.style.fontWeight = isWarn ? '600' : '';
+  }
+  function updateDeadlineUI(){
+    let c = null; try { c = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
+    c = c || {};
+    const pct = getProgressPctFromCur();
+    const dStr = c.dataScad || (document.getElementById('dataScad')?.value || '');
+    const d = parseISODate(dStr);
+    if (!d || pct===100){
+      hideDeadlineAlert();
+      applyScadenzaInputStyle(false);
+      return;
+    }
+    const today = new Date();
+    const daysLeft = diffDaysUTC(d, today);
+    if (daysLeft < 0){
+      applyScadenzaInputStyle(true);
+      showDeadlineAlert(`<strong>Attenzione:</strong> scadenza <u>già passata</u> (${DTIT(dStr)}).`);
+    } else if (daysLeft <= 5){
+      applyScadenzaInputStyle(true);
+      showDeadlineAlert(`<strong>Attenzione:</strong> mancano <u>${daysLeft} giorni</u> alla scadenza lavori (${DTIT(dStr)}).`);
+    } else {
+      hideDeadlineAlert();
+      applyScadenzaInputStyle(false);
+    }
+  }
+  function ensureScadenzaBanner(){
+    const input = document.getElementById('dataScad');
+    if (!input) return null;
+    let bn = document.getElementById('daysLeftBanner');
+    if (!bn){
+      bn = document.createElement('div');
+      bn.id = 'daysLeftBanner';
+      bn.className = 'small mt-1';
+      input.parentElement && input.parentElement.appendChild(bn);
+    }
+    return bn;
+  }
+  function updateDaysLeftBanner(){
+    let c = null; try { c = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
+    c = c || {};
+    const pct = getProgressPctFromCur();
+    const bn = ensureScadenzaBanner();
+    if (!bn) return;
+    const dVal = c.dataScad || (document.getElementById('dataScad')?.value || '');
+    const d = dVal ? new Date(dVal) : null;
+    if (!d || isNaN(d) || pct===100){ bn.textContent=''; return; }
+    const today = new Date();
+    const MS = 86400000;
+    const daysLeft = Math.round((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) - Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/MS);
+    if (daysLeft < 0){ bn.innerHTML = '<span class="text-danger fw-bold">Scaduta</span>'; }
+    else if (daysLeft <= 5){ bn.innerHTML = `<span class="text-danger fw-semibold">Mancano ${daysLeft} giorni alla scadenza</span>`; }
+    else { bn.textContent=''; }
+  }
+
   // ===== Helpers UI =====
   function fillForm(){
     const c = initCur();
@@ -540,8 +665,7 @@ Totale: ${EURO(tot)}`);
   function clearEditorToNew(){
     const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
     setCurLight(fresh);
-    // reset foto
-    if (typeof window.__elipResetPhotos === 'function') window.__elipResetPhotos(); else { /* fallback */ }
+    if (typeof window.__elipResetPhotos === 'function') window.__elipResetPhotos();
     const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
     ids.forEach(id => { const el = $('#'+id); if (el) el.value = ''; });
     fillForm(); renderLines(); updateDeadlineUI(); updateDaysLeftBanner(); focusFirstField();
@@ -573,6 +697,25 @@ Totale: ${EURO(tot)}`);
       document.body.appendChild(wrap.firstElementChild);
     }
     try { new bootstrap.Modal(document.getElementById(wrapId)).show(); } catch {}
+  }
+
+  // ===== Archivio — Button "In scadenza" =====
+  function ensureInScadenzaButton(){
+    const grp = document.querySelector('#tab-archivio .btn-group');
+    if (!grp || document.getElementById('fltDue')) return;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-outline-warning';
+    btn.id = 'fltDue';
+    btn.textContent = 'In scadenza ⏰';
+    grp.appendChild(btn);
+    btn.addEventListener('click', (e)=>{
+      e.preventDefault();
+      document.getElementById('fltAll')?.classList.remove('active');
+      document.getElementById('fltOk')?.classList.remove('active');
+      document.getElementById('fltNo')?.classList.remove('active');
+      btn.classList.add('active');
+      renderArchiveTable();
+    });
   }
 
   // ===== Bind & Init =====
@@ -619,16 +762,15 @@ Totale: ${EURO(tot)}`);
     $('#catalogSearch')?.addEventListener('input', e => renderCatalog(e.target.value));
 
     $('#filterQuery')?.addEventListener('input', renderArchiveTable);
-    $('#fltAll')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltAll').classList.add('active'); $('#fltOk')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
-    $('#fltOk')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltOk').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
-    $('#fltNo')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltNo').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltOk')?.classList.remove('active'); renderArchiveTable(); });
+    $('#fltAll')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltAll').classList.add('active'); $('#fltOk')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); document.getElementById('fltDue')?.classList.remove('active'); renderArchiveTable(); });
+    $('#fltOk')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltOk').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); document.getElementById('fltDue')?.classList.remove('active'); renderArchiveTable(); });
+    $('#fltNo')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltNo').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltOk')?.classList.remove('active'); document.getElementById('fltDue')?.classList.remove('active'); renderArchiveTable(); });
 
     $('#archBody')?.addEventListener('click', (e)=>{
       const b = e.target.closest('button[data-open-num]');
       if (b){ openFromArchive(b.getAttribute('data-open-num')); }
     });
 
-    // Click su anteprima: X elimina, altrimenti apre modale con immagine full
     $('#imgPreview')?.addEventListener('click', async (e)=>{
       const btn = e.target.closest('button[data-remove-id]');
       if (btn){
@@ -679,118 +821,3 @@ Totale: ${EURO(tot)}`);
 
   document.addEventListener('DOMContentLoaded', ()=>{ bind(); init(); });
 })();
-
-
-// ===== Scadenza & Alert =====
-function getProgressPctFromCur(){
-  // Legge dallo storage per evitare dipendenze di ordine
-  let c = null;
-  try { c = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
-  if (!c || !Array.isArray(c.lines)) return 0;
-  let toDo = 0, done = 0;
-  for (const r of c.lines){
-    const has = (r?.desc||'').toString().trim() !== '' || (+r?.qty||0) > 0 || (+r?.price||0) > 0;
-    if (has) { toDo++; if (r?.doneDate && String(r.doneDate).trim()) done++; }
-  }
-  return toDo ? Math.round((done/toDo)*100) : 0;
-}
-
-function parseISODate(v){
-  if (!v) return null;
-  const d = new Date(v);
-  return isNaN(d) ? null : d;
-}
-function diffDaysUTC(a,b){
-  const MS = 24*60*60*1000;
-  const ua = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
-  const ub = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
-  return Math.round((ua - ub)/MS);
-}
-function ensureDeadlineAlertContainer(){
-  const table = document.getElementById('linesTable');
-  if (!table) return null;
-  const card = table.closest('.card');
-  if (!card) return null;
-  let host = card.querySelector('.deadline-host');
-  if (!host){
-    host = document.createElement('div');
-    host.className = 'deadline-host';
-    card.insertBefore(host, card.firstChild);
-  }
-  return host;
-}
-function showDeadlineAlert(html){
-  const host = ensureDeadlineAlertContainer();
-  if (!host) return;
-  host.innerHTML = '';
-  const div = document.createElement('div');
-  div.id = 'deadlineAlert';
-  div.className = 'alert alert-danger d-flex align-items-center my-2';
-  div.role = 'alert';
-  div.innerHTML = html;
-  host.appendChild(div);
-}
-function hideDeadlineAlert(){
-  const el = document.getElementById('deadlineAlert');
-  if (el && el.parentNode) el.parentNode.removeChild(el);
-}
-function applyScadenzaInputStyle(isWarn){
-  const el = document.getElementById('dataScad');
-  if (!el) return;
-  el.classList.toggle('is-invalid', !!isWarn);
-  el.style.color = isWarn ? '#dc3545' : '';
-  el.style.fontWeight = isWarn ? '600' : '';
-}
-function updateDeadlineUI(){
-  let c = null; try { c = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
-  c = c || {};
-  const pct = getProgressPctFromCur();
-  const dStr = c.dataScad || (document.getElementById('dataScad')?.value || '');
-  const d = parseISODate(dStr);
-  if (!d || pct === 100){
-    hideDeadlineAlert();
-    applyScadenzaInputStyle(false);
-    return;
-  }
-  const today = new Date();
-  const daysLeft = diffDaysUTC(d, today);
-  if (daysLeft < 0){
-    applyScadenzaInputStyle(true);
-    showDeadlineAlert(`<strong>Attenzione:</strong> scadenza <u>già passata</u> (${DTIT(dStr)}).`);
-  } else if (daysLeft <= 5){
-    applyScadenzaInputStyle(true);
-    showDeadlineAlert(`<strong>Attenzione:</strong> mancano <u>${daysLeft} giorni</u> alla scadenza lavori (${DTIT(dStr)}).`);
-  } else {
-    hideDeadlineAlert();
-    applyScadenzaInputStyle(false);
-  }
-}
-// Banner sotto il campo "Data scadenza"
-function ensureScadenzaBanner(){
-  const input = document.getElementById('dataScad');
-  if (!input) return null;
-  let bn = document.getElementById('daysLeftBanner');
-  if (!bn){
-    bn = document.createElement('div');
-    bn.id = 'daysLeftBanner';
-    bn.className = 'small mt-1';
-    input.parentElement && input.parentElement.appendChild(bn);
-  }
-  return bn;
-}
-function updateDaysLeftBanner(){
-  let c = null; try { c = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
-  c = c || {};
-  const pct = getProgressPctFromCur();
-  const bn = ensureScadenzaBanner();
-  if (!bn) return;
-  const dVal = c.dataScad || (document.getElementById('dataScad')?.value || '');
-  const d = dVal ? new Date(dVal) : null;
-  if (!d || isNaN(d) || pct === 100){ bn.textContent=''; return; }
-  const today = new Date();
-  const MS = 86400000;
-  const daysLeft = Math.round((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) - Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/MS);
-  if (daysLeft < 0){ bn.innerHTML = '<span class="text-danger fw-bold">Scaduta</span>'; }
-  else if (daysLeft <= 5){ bn.innerHTML = `<span class="text-danger fw-semibold">Mancano ${daysLeft} giorni alla scadenza</span>`; }
-  else { bn.textContent=''; }
-}

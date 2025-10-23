@@ -1,5 +1,5 @@
 
-/* Preventivi ELIP — app-supabase.js (FINAL v2) */
+/* Preventivi ELIP — app-supabase.js (FINAL v4c) */
 (function(){
   'use strict';
   let client = null;
@@ -7,7 +7,6 @@
     // Hardening init
     if (!window.supabase) throw new Error('Supabase SDK non caricato (verifica CDN)');
     if (client) return client;
-    if (!window.supabase || !window.supabase.createClient) throw new Error('Supabase non caricato');
     const cfg = window.supabaseConfig || {};
     if (!cfg.url || !cfg.anon) throw new Error('config.js mancante o incompleto');
     client = window.supabase.createClient(cfg.url, cfg.anon, { auth: { persistSession: false } });
@@ -150,12 +149,10 @@
     const tpath = deriveThumbPathFromOriginalPath(path);
     const delList = [path];
     if (tpath) delList.push(tpath);
-    // delete storage
     await withRetry(async () => {
       const { error } = await c.storage.from('photos').remove(delList);
       if (error) throw error;
     });
-    // delete db row
     try { await c.from('photos').delete().eq('path', path); } catch {}
     return true;
   }
@@ -195,7 +192,7 @@
   async function loadArchiveRetry(){ return await withRetry(async () => await loadArchive(), 3, 300); }
 
   async function saveToSupabase(goArchive){
-    const cur = (() => { try { return JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch { return null; } })();
+    let cur = null; try { cur = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
     if (!cur) { alert('Nessun preventivo in memoria.'); return false; }
     const payload = buildPayload(cur);
     const { error } = await upsertPreventivoByNumero(payload);
