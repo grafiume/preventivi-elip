@@ -1,5 +1,9 @@
 
-/* Preventivi ELIP — app-supabase.js (2025-10-23, refresh Archivio subito dopo Salva) */
+/* Preventivi ELIP — app-supabase.js (2025-10-23 fixes)
+   - Robust loadArchive + retry
+   - Photo upload to Storage + persist public URLs into preventivi.photos (array) if column exists
+   - After save, refresh archive and allow UI callback
+*/
 (function(){
   'use strict';
 
@@ -13,18 +17,21 @@
   }
 
   const sleep = (ms)=> new Promise(r=>setTimeout(r,ms));
-  async function withRetry(fn, tries=3, base=300){
+  async function withRetry(fn, tries=3, base=250){
     let last;
     for (let i=0;i<tries;i++){
       try { return await fn(); }
       catch (e){
         last = e;
         const code = Number(e?.status || e?.code || 0);
-        if (code===429 || code>=500) { await sleep(base*(2**i)); continue; }
+        if (code===429 || code>=500 || String(e?.message||'').includes('schema')) {
+          await sleep(base*(i+1));
+          continue;
+        }
         break;
       }
     }
-    throw last;
+    if (last) throw last;
   }
 
   const nz = (v)=> (v===undefined ? null : v);
@@ -48,7 +55,8 @@
       note: ntext(cur.note),
       linee: nz(cur.lines || []),
       imponibile: nnumber(imponibile),
-      totale: nnumber(totale)
+      totale: nnumber(totale),
+      photos: Array.isArray(cur.photos) ? cur.photos : null
     };
   }
 
@@ -91,18 +99,29 @@
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
     const fname = `${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
     const path = `${numero}/${fname}`;
-
+    // Upload
     await withRetry(async () => {
       const { error } = await c.storage.from('photos').upload(path, file, { cacheControl: '3600', upsert: false });
       if (error) throw error;
     });
-
+    // Public URL
     const { data: pub } = c.storage.from('photos').getPublicUrl(path);
     const url = pub?.publicUrl || null;
 
+    // Fallback table insert (optional)
     try { await c.from('photos').insert([{ record_num: numero, path, url }]); } catch(_) {}
 
     return { path, url };
+  }
+
+  async function persistPhotosOnRecord(numero, photos){
+    const c = supa();
+    try {
+      const { error } = await c.from('preventivi').update({ photos }).eq('numero', numero);
+      if (error) console.warn('[persistPhotosOnRecord] update failed (maybe no photos column):', error.message);
+    } catch (e) {
+      console.warn('[persistPhotosOnRecord] not persisted', e?.message);
+    }
   }
 
   async function loadArchive(){
@@ -115,6 +134,10 @@
     }
     try { localStorage.setItem('elip_archive', JSON.stringify(data || [])); } catch {}
     return data || [];
+  }
+
+  async function loadArchiveRetry(){
+    return await withRetry(async () => await loadArchive(), 3, 300);
   }
 
   function subscribeRealtime(){
@@ -143,27 +166,43 @@
       return false;
     }
 
-    // Foto (best-effort)
+    // Foto (best-effort). Colleziona URL e salva anche in preventivi.photos se possibile
     const queue = Array.isArray(window.__elipPhotosQueue) ? window.__elipPhotosQueue.slice() : [];
+    const newUrls = [];
     for (const f of queue) {
-      try { await uploadPhoto(f, cur.id); } catch (e) { console.warn('[uploadPhoto]', e); }
+      try {
+        const { url } = await uploadPhoto(f, cur.id);
+        if (url) newUrls.push(url);
+      } catch (e) { console.warn('[uploadPhoto]', e); }
     }
     window.__elipPhotosQueue = [];
+    if (newUrls.length) {
+      const merged = Array.isArray(cur.photos) ? [...cur.photos, ...newUrls] : newUrls;
+      try {
+        const c2 = supa();
+        const { error: upErr } = await c2.from('preventivi').update({ photos: merged }).eq('numero', cur.id);
+        if (upErr) console.warn('[saveToSupabase] update photos failed:', upErr.message);
+        cur.photos = merged;
+        localStorage.setItem('elip_current', JSON.stringify(cur));
+      } catch(e){ console.warn('[saveToSupabase] photos persist warn:', e?.message); }
+      try { await persistPhotosOnRecord(cur.id, cur.photos); } catch(_) {}
+    }
 
-    await loadArchive();
+    await loadArchiveRetry();
     if (typeof window.renderArchiveLocal === 'function') {
       try { window.renderArchiveLocal(); } catch (_) {}
     }
 
     if (typeof window.toastSaved === 'function') window.toastSaved();
 
-    // resta sull'editor
-    const btn = document.querySelector('[data-bs-target="#tab-editor"]');
-    if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
-    if (archiveAfter) { const t = document.querySelector('[data-bs-target="#tab-archivio"]'); t && t.click(); }
+    // Tab switch
+    if (archiveAfter) {
+      const t = document.querySelector('[data-bs-target="#tab-archivio"]');
+      if (t) { try { new bootstrap.Tab(t).show(); } catch { t.click(); } }
+    }
 
     return true;
   }
 
-  window.dbApi = { supa, uploadPhoto, loadArchive, subscribeRealtime, saveToSupabase };
+  window.dbApi = { supa, uploadPhoto, loadArchive, loadArchiveRetry, subscribeRealtime, saveToSupabase };
 })();

@@ -1,7 +1,9 @@
 
-/* Preventivi ELIP — app.js (2025-10-23)
-   - Dopo Salva: finestra "Salvato!" + vai su Archivio
-   - Catalogo voci: no scroll interno (gestito da CSS), resto invariato
+/* Preventivi ELIP — app.js (2025-10-23 fixes)
+   - PDF (Dettaglio/Totale) fixed: correct jsPDF access
+   - Email/WhatsApp compose
+   - After save: show "Salvato!" and go Archivio (with refreshed list)
+   - Photos queue hookup (file input)
 */
 (function(){
   'use strict';
@@ -11,7 +13,7 @@
   const EURO = n => (n||0).toLocaleString('it-IT', { style:'currency', currency:'EUR' });
   const DTIT = s => s ? new Date(s).toLocaleDateString('it-IT') : '';
 
-  /* ===== Modal "Salvato!" costruito a runtime ===== */
+  /* ===== Modal "Salvato!" ===== */
   function ensureSavedModal(){
     if ($('#savedModal')) return;
     const wrap = document.createElement('div');
@@ -115,7 +117,10 @@
   function initCur(){
     let cur = getCur();
     if (!cur) {
-      cur = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
+      cur = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[], photos:[] };
+      setCurLight(cur);
+    } else if (!Array.isArray(cur.photos)) {
+      cur.photos = [];
       setCurLight(cur);
     }
     return cur;
@@ -247,7 +252,7 @@
     recalcTotals();
   }
   function clearEditorToNew(){
-    const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
+    const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[], photos:[] };
     setCurLight(fresh);
     window.__elipPhotosQueue = [];
     $('#imgInput') && ($('#imgInput').value = '');
@@ -255,7 +260,7 @@
     fillForm(); renderLines();
   }
 
-  /* ===== Archivio ===== */
+  /* ===== Archivio and refresh hook ===== */
   function coerceArray(a){
     if (!a) return [];
     if (Array.isArray(a)) return a;
@@ -309,7 +314,8 @@
       dataAcc: r.data_accettazione || '',
       dataScad: r.data_scadenza || '',
       note: r.note || '',
-      lines: r.linee || []
+      lines: r.linee || [],
+      photos: Array.isArray(r.photos) ? r.photos : []
     };
     setCurLight(cur);
     fillForm();
@@ -356,20 +362,104 @@
   }
   window.renderArchiveLocal = function(){ try { renderArchiveTable(); } catch(_){} };
 
+  /* ===== PDF / Email / WhatsApp ===== */
+  function collectFlat(c){
+    let imp=0; (c.lines||[]).forEach(r=> imp += (+r.qty||0)*(+r.price||0));
+    const iva = imp*0.22, tot = imp+iva;
+    return { imp, iva, tot };
+  }
+  async function makePDF(detail){
+    const c = initCur();
+    // jsPDF UMD exposes window.jspdf.jsPDF
+    const jsPDF = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : null;
+    if (!jsPDF) { alert('jsPDF non disponibile'); return; }
+    const doc = new jsPDF({ unit:'pt', format:'a4' });
+    const title = `Preventivo ${c.id}`;
+    doc.setFontSize(16); doc.text(title, 40, 40);
+    doc.setFontSize(11);
+    doc.text(`Cliente: ${c.cliente||''}`, 40, 70);
+    doc.text(`Articolo: ${c.articolo||''}`, 40, 90);
+    doc.text(`DDT: ${c.ddt||''}`, 40, 110);
+    doc.text(`Data invio: ${DTIT(c.dataInvio)||''}`, 40, 130);
+    doc.text(`Data accettazione: ${DTIT(c.dataAcc)||''}`, 40, 150);
+    doc.text(`Scadenza lavori: ${DTIT(c.dataScad)||''}`, 40, 170);
+    if (detail && doc.autoTable) {
+      const rows = (c.lines||[]).map(r => [r.code||'', r.desc||'', r.qty||0, (r.price||0), ((+r.qty||0)*(+r.price||0))]);
+      if (rows.length) {
+        doc.autoTable({
+          startY: 190,
+          head: [['Cod', 'Descrizione', 'Q.tà', 'Prezzo €', 'Tot. €']],
+          body: rows,
+          styles: { fontSize: 9, halign:'right' },
+          columnStyles: { 0:{halign:'left'}, 1:{halign:'left'} }
+        });
+      }
+    }
+    const { imp, iva, tot } = collectFlat(c);
+    let y = detail && doc.lastAutoTable ? (doc.lastAutoTable.finalY || 190) + 20 : 200;
+    doc.setFontSize(12);
+    doc.text(`Imponibile: ${EURO(imp)}`, 40, y); y+=18;
+    doc.text(`IVA (22%): ${EURO(iva)}`, 40, y); y+=18;
+    doc.text(`TOTALE: ${EURO(tot)}`, 40, y);
+
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    const ifr = $('#pdfFrame'); if (ifr) ifr.src = url;
+    const a = $('#btnDownload'); if (a) { a.href = url; a.download = `${c.id}.pdf`; }
+    const aJPG = $('#btnJPG'); if (aJPG) { try { const jpg = doc.output('datauristring','jpeg'); aJPG.href = jpg; aJPG.download = `${c.id}.jpg`; } catch {} }
+    const modalEl = $('#pdfModal'); if (modalEl) {
+      try { new bootstrap.Modal(modalEl).show(); } catch { modalEl.style.display='block'; }
+    }
+  }
+  function composeEmail(){
+    const c = initCur();
+    const { imp, iva, tot } = collectFlat(c);
+    const to = (c.email||'').trim();
+    const subject = encodeURIComponent(`Preventivo ${c.id} - ${c.cliente||''}`);
+    const body = encodeURIComponent(
+`Gentile ${c.cliente||''},
+
+in allegato il preventivo ${c.id}.
+Riepilogo:
+- Articolo: ${c.articolo||''}
+- Imponibile: ${EURO(imp)}
+- IVA (22%): ${EURO(iva)}
+- Totale: ${EURO(tot)}
+
+Restiamo a disposizione.
+Cordiali saluti`);
+    const href = `mailto:${to}?subject=${subject}&body=${body}`;
+    // usare location.assign per certe policy
+    window.location.assign(href);
+  }
+  function composeWhatsApp(){
+    const c = initCur();
+    const { imp, tot } = collectFlat(c);
+    const msg = encodeURIComponent(
+`Preventivo ${c.id}
+Cliente: ${c.cliente||''}
+Articolo: ${c.articolo||''}
+Imponibile: ${EURO(imp)}
+Totale: ${EURO(tot)}`);
+    const raw = (c.telefono||'').replace(/\D+/g,'');
+    const link = raw ? `https://wa.me/${raw}?text=${msg}` : `https://wa.me/?text=${msg}`;
+    // apri in target _blank per evitare blocchi popup (è su click handler)
+    window.open(link, '_blank', 'noopener');
+  }
+
   /* ===== Bind & Init ===== */
   function bind(){
     // Pulsanti
     $('#btnNew')?.addEventListener('click', (e)=>{
       e.preventDefault();
       clearEditorToNew();
-      // Se siamo in Archivio, vai in Editor
       const btn = document.querySelector('[data-bs-target="#tab-editor"]');
       if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
     });
     $('#btnClear')?.addEventListener('click', (e)=>{
       e.preventDefault();
       const c = initCur();
-      setCurLight({ id:c.id, createdAt:c.createdAt, cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] });
+      setCurLight({ id:c.id, createdAt:c.createdAt, cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[], photos:[] });
       window.__elipPhotosQueue = [];
       $('#imgInput') && ($('#imgInput').value = '');
       $('#imgPreview') && ($('#imgPreview').innerHTML = '');
@@ -380,31 +470,31 @@
     $('#btnSave')?.addEventListener('click', async (e)=>{
       e.preventDefault();
       snapshotFormToCur();
-      // Chiedo a Supabase di salvare e poi vado in Archivio
       const ok = await (window.dbApi?.saveToSupabase ? window.dbApi.saveToSupabase(true) : Promise.resolve(false));
       if (ok) {
         showSavedModal();
-        // switch immediato all'Archivio (saveToSupabase(true) già lo fa, qui garantiamo)
+        // Aggiorna archivio con retry e ridisegna
+        try { await window.dbApi.loadArchiveRetry?.(); } catch {}
+        window.renderArchiveLocal?.();
         const t = document.querySelector('[data-bs-target="#tab-archivio"]');
         if (t) { try { new bootstrap.Tab(t).show(); } catch { t.click(); } }
       }
     });
 
+    // PDF / Email / WhatsApp
+    $('#btnPDFDett')?.addEventListener('click', ()=> makePDF(true));
+    $('#btnPDFTot')?.addEventListener('click', ()=> makePDF(false));
+    $('#btnMail')?.addEventListener('click', composeEmail);
+    $('#btnWA')?.addEventListener('click', composeWhatsApp);
+
+    // File foto → coda upload
+    $('#imgInput')?.addEventListener('change', e => {
+      const files = Array.from(e.target.files||[]);
+      window.__elipPhotosQueue = files;
+    });
+
     // Catalogo
     $('#catalogSearch')?.addEventListener('input', e => renderCatalog(e.target.value));
-    $('#btnAddCustom')?.addEventListener('click', ()=> addLine({code:'',desc:'',qty:1,price:0,done:false,doneBy:'',doneDate:''}));
-    $('#btnEditCatalog')?.addEventListener('click', ()=>{
-      const cur = JSON.stringify(getCatalog(), null, 2);
-      const next = prompt('Modifica catalogo (JSON):', cur);
-      if (!next) return;
-      try {
-        const parsed = JSON.parse(next);
-        if (!Array.isArray(parsed)) throw new Error('Deve essere un array');
-        setCatalog(parsed);
-        buildDatalist();
-        renderCatalog($('#catalogSearch')?.value||'');
-      } catch(e){ alert('JSON non valido: ' + e.message); }
-    });
 
     // Archivio
     $('#filterQuery')?.addEventListener('input', renderArchiveTable);
@@ -431,6 +521,10 @@
   }
 
   async function init(){
+    // piccoli check su plugin pdf
+    if (!window.jspdf || !window.jspdf.jsPDF) console.warn('[pdf] jsPDF non caricato (controlla <script jsPDF> in index.html)');
+    if (!('autoTable' in (window.jspdf?.jsPDF?.API || {}))) console.warn('[pdf] jsPDF-AutoTable non caricato (controlla plugin in index.html)');
+
     ensureCatalog();
     buildDatalist();
     renderCatalog('');
