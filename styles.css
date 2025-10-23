@@ -1,26 +1,14 @@
-:root{--bg:#f8f9fb;--card:#fff;--border:#e5e7eb;--text:#212529;--accent:#c7773b;--green:#2fa349;--red:#c33838;--warn:#f6c343;--donebg:#eaf7ef}
-body{background:var(--bg);color:var(--text)}
-.appbar{position:sticky;top:0;z-index:1030;background:var(--card);border-bottom:2px solid var(--accent)}
-.brand{height:44px}
-.card{background:var(--card);border:1px solid var(--border)}
-.table{color:var(--text);font-size:1rem}
-input,select,textarea{background:var(--card)!important;color:var(--text)!important;border-color:var(--border)!important}
-.form-control:focus{box-shadow:none;border-color:var(--accent)!important}
-.thumb{width:140px;height:105px;object-fit:cover;border:1px solid var(--border);border-radius:6px;cursor:pointer}
-.thumb-wrap{position:relative;display:inline-block}
-.thumb-wrap button{position:absolute;top:4px;right:4px}
-.badge-deadline{background:var(--warn);color:#000;font-weight:700}
-.tr-done{background:var(--donebg)!important}
-.btn-state-dot{width:28px;height:28px;border-radius:50%;border:none;display:inline-block}
-.btn-state-dot.red{background:var(--red)}.btn-state-dot.green{background:var(--green)}
-.catalog .list-group-item{background:var(--card);color:var(--text);padding:.5rem .75rem;cursor:pointer}
-.catalog .list-group-item+.list-group-item{border-top:1px dashed var(--border)}
-.catalog .list-group-item:hover{background:rgba(199,119,59,.06)}
-.acc-pill{display:inline-flex;align-items:center;gap:6px;font-weight:700;padding:6px 10px;border-radius:999px;border:2px solid transparent}
-.acc-pill::before{content:"";display:inline-block;width:14px;height:14px;border-radius:50%}
-.acc-ok{color:#0f5132;background:#d1e7dd;border-color:#badbcc}
-.acc-ok::before{background:#198754}
-.acc-no{color:#842029;background:#f8d7da;border-color:#f5c2c7}
-.progress-bar.bg-50{background-color:var(--warn)!important}
-.progress-bar.bg-100{background-color:var(--green)!important}
-.progress-dot{font-size:22px;line-height:1;display:inline-block;vertical-align:middle}
+/* Preventivi ELIP — styles.css additions (2025-10-23) */
+
+/* Pill accettazione */
+.acc-pill{ font-weight:600; }
+.acc-yes{ color:#198754; }  /* verde Bootstrap */
+.acc-no { color:#dc3545; }  /* rosso Bootstrap */
+
+/* Thumbs immagini */
+.thumb-wrap{ position:relative; display:inline-block; }
+.thumb{ max-width:160px; max-height:120px; display:block; border-radius:.5rem; }
+.thumb-wrap .btn{ position:absolute; top:.25rem; right:.25rem; }
+
+/* Catalogo */
+.catalog{ max-height:50vh; overflow:auto; }

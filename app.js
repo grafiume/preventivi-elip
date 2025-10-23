@@ -1,5 +1,4 @@
-
-/* Preventivi ELIP — app.js (2025-10-23, Stato lavorazione fix: pill + badge per riga) */
+/* Preventivi ELIP — app.js (2025-10-23, snapshot+Archivio imponibile + pill OK/NO + catalogo + stato righe) */
 (function(){
   'use strict';
 
@@ -8,7 +7,7 @@
   const EURO = n => (n||0).toLocaleString('it-IT', { style:'currency', currency:'EUR' });
   const DTIT = s => s ? new Date(s).toLocaleDateString('it-IT') : '';
 
-  // ---------------- Catalogo Voci ----------------
+  /* ====================== Catalogo voci ====================== */
   const DEFAULT_CATALOG=[
     {code:"05",desc:"Smontaggio completo del motore sistematico"},
     {code:"29",desc:"Lavaggio componenti e trattamento termico avvolgimenti"},
@@ -84,7 +83,7 @@
     } catch(e){ alert('JSON non valido: ' + e.message); }
   }
 
-  // ---------------- Stato corrente (NO immagini in LS) ----------------
+  /* ====================== Stato corrente (no immagini in LS) ====================== */
   window.__elipPhotosQueue = []; // solo in memoria
   function getCur(){ try { return JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch { return null; } }
   function setCurLight(o){
@@ -114,7 +113,7 @@
     return cur;
   }
 
-  // ---------------- Editor ----------------
+  /* ====================== Editor ====================== */
   function fillForm(){
     const c = initCur();
     ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id => { const el = $('#'+id); if (el) el.value = c[id] || ''; });
@@ -175,7 +174,7 @@
     if (e.target.classList.contains('line-operator')) c.lines[i].doneBy = e.target.value;
     if (e.target.classList.contains('line-date')) c.lines[i].doneDate = e.target.value;
     setCurLight(c);
-    renderLines();     // re-render to update the status badge color
+    renderLines();     // aggiorna badge stato riga
     recalcTotals();
   }
   function onLineClick(e){
@@ -189,23 +188,33 @@
     }
   }
 
-  // ---------------- Stato accettazione (pill verde/rosso) ----------------
-  function updateAccPill(){
-    const val = ($('#dataAcc')?.value || '').trim();
-    const pill = $('#okPill');
-    if (!pill) return;
-    const yes = !!val;
-    pill.textContent = yes ? '● OK' : '● NO';
-    pill.classList.toggle('acc-yes', yes);
-    pill.classList.toggle('acc-no', !yes);
-    // fallback inline style se le classi non esistono in CSS
-    if (!pill.classList.contains('acc-yes') && !pill.classList.contains('acc-no')) {
-      pill.style.color = yes ? '#198754' : '#dc3545'; // verde / rosso Bootstrap
-      pill.style.fontWeight = '600';
-    }
+  /* ====================== Snapshot form (prima di SALVA) ====================== */
+  function snapshotFormToCur(){
+    const c = initCur();
+    c.cliente   = ($('#cliente')?.value || '').trim();
+    c.articolo  = ($('#articolo')?.value || '').trim();
+    c.ddt       = ($('#ddt')?.value || '').trim();
+    c.telefono  = ($('#telefono')?.value || '').trim();
+    c.email     = ($('#email')?.value || '').trim();
+    c.dataInvio = ($('#dataInvio')?.value || '').trim();
+    c.dataAcc   = ($('#dataAcc')?.value || '').trim();
+    c.dataScad  = ($('#dataScad')?.value || '').trim();
+    c.note      = ($('#note')?.value || '');
+    setCurLight(c);
+    return c;
   }
 
-  // ---------------- Totali & Avanzamento ----------------
+  /* ====================== Stato accettazione (pill) ====================== */
+  function updateAccPill(){
+    const has = ($('#dataAcc')?.value || '').trim().length > 0;
+    const pill = $('#okPill');
+    if (!pill) return;
+    pill.textContent = has ? '● OK' : '● NO';
+    pill.classList.toggle('acc-yes', has);
+    pill.classList.toggle('acc-no', !has);
+  }
+
+  /* ====================== Progress & Totali ====================== */
   function updateProgress(){
     const c = initCur();
     let toDo=0, done=0;
@@ -237,7 +246,7 @@
     updateAccPill();
   }
 
-  // ---------------- Foto ----------------
+  /* ====================== Foto ====================== */
   function renderImages(){
     const wrap = $('#imgPreview'); if (!wrap) return;
     wrap.innerHTML = '';
@@ -254,7 +263,7 @@
     };
   }
 
-  // ---------------- Archivio ----------------
+  /* ====================== Archivio ====================== */
   function computeAccCounters(arr){
     let ok=0,no=0;
     (arr||[]).forEach(r => ((r.data_accettazione||'').toString().trim()? ok++ : no++));
@@ -286,7 +295,7 @@
         <td>${r.cliente||''}</td>
         <td>${r.articolo||''}</td>
         <td>${r.ddt||''}</td>
-        <td class="text-end">${EURO(r.totale||0)}</td>
+        <td class="text-end">${EURO(r.imponibile||0)}</td>
         <td>${DTIT(r.data_accettazione)}</td>
         <td>${DTIT(r.data_scadenza)}</td>
         <td>${r.data_accettazione ? '<span class="badge text-bg-success">Accettato</span>' : '<span class="badge text-bg-danger">Da accettare</span>'}</td>
@@ -321,16 +330,14 @@
     if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
   }
 
-  // ---------------- Toast ----------------
+  /* ====================== Toast + Hooks ====================== */
   window.toastSaved = function(){
     const el = $('#toastSave'); if (!el) return;
     try { new bootstrap.Toast(el).show(); } catch {}
   };
-
-  // ---------------- Hooks da app-supabase.js ----------------
   window.renderArchiveLocal = function(){ renderArchiveTable(); };
 
-  // ---------------- Bind eventi ----------------
+  /* ====================== Bind eventi ====================== */
   function bind(){
     // Nuovo
     $('#btnNew')?.addEventListener('click', (e)=>{
@@ -355,7 +362,9 @@
     // Salva
     $('#btnSave')?.addEventListener('click', async (e)=>{
       e.preventDefault();
-      try { await window.dbApi.saveToSupabase(false); } catch(err){ alert('Errore salvataggio: ' + (err?.message||err)); }
+      snapshotFormToCur();              // << sync prima del salvataggio
+      try { await window.dbApi.saveToSupabase(false); } 
+      catch(err){ alert('Errore salvataggio: ' + (err?.message||err)); }
     });
     // Foto
     $('#imgInput')?.addEventListener('change', e => { window.__elipPhotosQueue = Array.from(e.target.files||[]); renderImages(); });
@@ -376,12 +385,12 @@
       if (b){ openFromArchive(b.getAttribute('data-open-num')); }
     });
 
-    // Pill accettazione in tempo reale
-    $('#dataAcc')?.addEventListener('input', ()=>{ updateAccPill(); });
-    $('#dataAcc')?.addEventListener('change', ()=>{ updateAccPill(); });
+    // Pill accettazione
+    $('#dataAcc')?.addEventListener('input', updateAccPill);
+    $('#dataAcc')?.addEventListener('change', updateAccPill);
   }
 
-  // ---------------- Init ----------------
+  /* ====================== Init ====================== */
   document.addEventListener('DOMContentLoaded', async () => {
     ensureCatalog();
     buildDatalist();
