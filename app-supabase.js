@@ -1,5 +1,5 @@
 
-/* Preventivi ELIP — app-supabase.js (2025-10-23, return boolean on save) */
+/* Preventivi ELIP — app-supabase.js (2025-10-23, refresh Archivio subito dopo Salva) */
 (function(){
   'use strict';
 
@@ -27,14 +27,10 @@
     throw last;
   }
 
-  // Helpers tipi --------------------------------------------------------------
   const nz = (v)=> (v===undefined ? null : v);
   const ntext = (s)=> (typeof s==='string' && s.trim()!=='' ? s : null);
   const ndate = (s)=> (typeof s==='string' && s.trim()!=='' ? s : null);
-  const nnumber = (n)=> {
-    const x = Number(n);
-    return Number.isFinite(x) ? x : null;
-  };
+  const nnumber = (n)=> { const x = Number(n); return Number.isFinite(x) ? x : null; };
 
   function buildPayload(cur){
     const imponibile = (cur.lines || []).reduce((s,r)=> s + (+(r.qty||0))*(+(r.price||0)), 0);
@@ -50,7 +46,7 @@
       data_accettazione: ndate(cur.dataAcc),
       data_scadenza: ndate(cur.dataScad),
       note: ntext(cur.note),
-      linee: nz(cur.lines || []),           // gestita nativamente come jsonb
+      linee: nz(cur.lines || []),
       imponibile: nnumber(imponibile),
       totale: nnumber(totale)
     };
@@ -58,7 +54,6 @@
 
   async function saveCompat(table, payload, where){
     const c = supa();
-    // prova unica: assumiamo 'linee' jsonb (schema allineato)
     let q = c.from(table);
     if (where?.id) q = q.update(payload).eq('id', where.id).select().single();
     else q = q.insert(payload).select().single();
@@ -148,7 +143,7 @@
       return false;
     }
 
-    // Upload foto (best-effort)
+    // Foto (best-effort)
     const queue = Array.isArray(window.__elipPhotosQueue) ? window.__elipPhotosQueue.slice() : [];
     for (const f of queue) {
       try { await uploadPhoto(f, cur.id); } catch (e) { console.warn('[uploadPhoto]', e); }
@@ -156,6 +151,10 @@
     window.__elipPhotosQueue = [];
 
     await loadArchive();
+    if (typeof window.renderArchiveLocal === 'function') {
+      try { window.renderArchiveLocal(); } catch (_) {}
+    }
+
     if (typeof window.toastSaved === 'function') window.toastSaved();
 
     // resta sull'editor
@@ -163,7 +162,7 @@
     if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
     if (archiveAfter) { const t = document.querySelector('[data-bs-target="#tab-archivio"]'); t && t.click(); }
 
-    return true; // <<< SUCCESS
+    return true;
   }
 
   window.dbApi = { supa, uploadPhoto, loadArchive, subscribeRealtime, saveToSupabase };

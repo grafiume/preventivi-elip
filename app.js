@@ -1,10 +1,9 @@
 
 /* Preventivi ELIP — app.js (2025-10-23)
-   - Fix: aggiunta fillForm()
-   - Catalogo robusto (fallback default)
-   - Archivio: percentuale avanzamento + badge "Chiusa" (100%)
-   - Stato accettazione affiancato quando < 100%
-   - Dopo Salva: pulizia editor e nuovo numero
+   - PDF (Dettaglio/Totale) con anteprima
+   - Email/WhatsApp compose
+   - "Nuovo" pulisce e passa alla tab Editor (anche da Archivio)
+   - Refresh Archivio immediato dopo Salva (renderArchiveLocal)
 */
 (function(){
   'use strict';
@@ -14,7 +13,7 @@
   const EURO = n => (n||0).toLocaleString('it-IT', { style:'currency', currency:'EUR' });
   const DTIT = s => s ? new Date(s).toLocaleDateString('it-IT') : '';
 
-  /* ====== Catalogo ====== */
+  /* ===== Catalogo ===== */
   const DEFAULT_CATALOG=[
     {code:"05",desc:"Smontaggio completo del motore sistematico"},
     {code:"29",desc:"Lavaggio componenti e trattamento termico avvolgimenti"},
@@ -46,10 +45,7 @@
   function setCatalog(rows){
     try { localStorage.setItem('elip_catalog', JSON.stringify(rows||[])); } catch {}
   }
-  function ensureCatalog(){
-    const arr = getCatalog();
-    if (!arr.length) setCatalog(DEFAULT_CATALOG);
-  }
+  function ensureCatalog(){ const arr = getCatalog(); if (!arr.length) setCatalog(DEFAULT_CATALOG); }
   function buildDatalist(){
     let dl = $('#catalogCodes');
     if (!dl) { dl = document.createElement('datalist'); dl.id = 'catalogCodes'; document.body.appendChild(dl); }
@@ -88,7 +84,7 @@
     } catch(e){ alert('JSON non valido: ' + e.message); }
   }
 
-  /* ====== Stato corrente ====== */
+  /* ===== Stato corrente ===== */
   window.__elipPhotosQueue = [];
   function getCur(){ try { return JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch { return null; } }
   function setCurLight(o){
@@ -115,7 +111,7 @@
     return cur;
   }
 
-  /* ====== Pill accettazione ====== */
+  /* ===== Pill accettazione ===== */
   function updateAccPill(){
     const has = ($('#dataAcc')?.value || '').trim().length > 0;
     const pill = $('#okPill');
@@ -125,7 +121,7 @@
     pill.classList.toggle('acc-no', !has);
   }
 
-  /* ====== Progress & Totali (Editor) ====== */
+  /* ===== Progress & Totali (Editor) ===== */
   function updateProgress(){
     const c = initCur();
     let toDo=0, done=0;
@@ -157,7 +153,7 @@
     updateAccPill();
   }
 
-  /* ====== Editor righe ====== */
+  /* ===== Editor righe ===== */
   function renderLines(){
     const c = initCur();
     const body = $('#linesBody'); if (!body) return;
@@ -216,7 +212,7 @@
     }
   }
 
-  /* ====== Helpers ====== */
+  /* ===== Helpers ===== */
   function snapshotFormToCur(){
     const c = initCur();
     c.cliente   = ($('#cliente')?.value || '').trim();
@@ -240,8 +236,19 @@
     updateProgress();
     recalcTotals();
   }
+  function clearEditorToNew(){
+    const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
+    setCurLight(fresh);
+    window.__elipPhotosQueue = [];
+    $('#imgInput') && ($('#imgInput').value = '');
+    $('#imgPreview') && ($('#imgPreview').innerHTML = '');
+    fillForm(); renderLines();
+    // passa sempre alla tab Editor
+    const btn = document.querySelector('[data-bs-target="#tab-editor"]');
+    if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
+  }
 
-  /* ====== Archivio: progress percent + Chiusa + stato accettazione ====== */
+  /* ===== Archivio: progress percent + Chiusa + accettazione ===== */
   function coerceArray(a){
     if (!a) return [];
     if (Array.isArray(a)) return a;
@@ -265,7 +272,6 @@
     }
     return toDo ? Math.round((done/toDo)*100) : 0;
   }
-
   function computeAccCounters(arr){
     let ok=0,no=0;
     (arr||[]).forEach(r => ((r.data_accettazione||'').toString().trim()? ok++ : no++));
@@ -341,18 +347,93 @@
     });
     computeAccCounters(rows);
   }
+  // Espone per refresh immediato dopo Salva
+  window.renderArchiveLocal = function(){ try { renderArchiveTable(); } catch(_){} };
 
-  /* ====== Helpers ====== */
-  function clearEditorToNew(){
-    const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
-    setCurLight(fresh);
-    window.__elipPhotosQueue = [];
-    $('#imgInput') && ($('#imgInput').value = '');
-    $('#imgPreview') && ($('#imgPreview').innerHTML = '');
-    fillForm(); renderLines();
+  /* ===== PDF / Email / WhatsApp ===== */
+  function collectFlat(c){
+    let imp=0; (c.lines||[]).forEach(r=> imp += (+r.qty||0)*(+r.price||0));
+    const iva = imp*0.22, tot = imp+iva;
+    return { imp, iva, tot };
+  }
+  async function makePDF(detail){
+    const c = initCur();
+    const { jsPDF } = window.jspdf || window.jspdf || {};
+    if (!jsPDF) { alert('jsPDF non disponibile'); return; }
+    const doc = new jsPDF({ unit:'pt', format:'a4' });
+    const title = `Preventivo ${c.id}`;
+    doc.setFontSize(16); doc.text(title, 40, 40);
+    doc.setFontSize(11);
+    doc.text(`Cliente: ${c.cliente||''}`, 40, 70);
+    doc.text(`Articolo: ${c.articolo||''}`, 40, 90);
+    doc.text(`DDT: ${c.ddt||''}`, 40, 110);
+    doc.text(`Data invio: ${DTIT(c.dataInvio)||''}`, 40, 130);
+    doc.text(`Data accettazione: ${DTIT(c.dataAcc)||''}`, 40, 150);
+    doc.text(`Scadenza lavori: ${DTIT(c.dataScad)||''}`, 40, 170);
+    if (detail) {
+      const rows = (c.lines||[]).map(r => [r.code||'', r.desc||'', r.qty||0, (r.price||0), ((+r.qty||0)*(+r.price||0))]);
+      if (rows.length) {
+        doc.autoTable({
+          startY: 190,
+          head: [['Cod', 'Descrizione', 'Q.tà', 'Prezzo €', 'Tot. €']],
+          body: rows,
+          styles: { fontSize: 9, halign:'right' },
+          columnStyles: { 0:{halign:'left'}, 1:{halign:'left'} }
+        });
+      }
+    }
+    const { imp, iva, tot } = collectFlat(c);
+    let y = detail ? (doc.lastAutoTable?.finalY || 190) + 20 : 200;
+    doc.setFontSize(12);
+    doc.text(`Imponibile: ${EURO(imp)}`, 40, y); y+=18;
+    doc.text(`IVA (22%): ${EURO(iva)}`, 40, y); y+=18;
+    doc.text(`TOTALE: ${EURO(tot)}`, 40, y);
+
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    const ifr = $('#pdfFrame'); if (ifr) ifr.src = url;
+    const a = $('#btnDownload'); if (a) { a.href = url; a.download = `${c.id}.pdf`; }
+    const aJPG = $('#btnJPG'); if (aJPG) { try { const jpg = doc.output('datauristring','jpeg'); aJPG.href = jpg; aJPG.download = `${c.id}.jpg`; } catch {} }
+    const modalEl = $('#pdfModal'); if (modalEl) {
+      try { new bootstrap.Modal(modalEl).show(); } catch { modalEl.style.display='block'; }
+    }
+  }
+  function composeEmail(){
+    const c = initCur();
+    const { imp, iva, tot } = collectFlat(c);
+    const to = (c.email||'').trim();
+    const subject = encodeURIComponent(`Preventivo ${c.id} - ${c.cliente||''}`);
+    const body = encodeURIComponent(
+`Gentile ${c.cliente||''},
+
+in allegato il preventivo ${c.id}.
+Riepilogo:
+- Articolo: ${c.articolo||''}
+- Imponibile: ${EURO(imp)}
+- IVA (22%): ${EURO(iva)}
+- Totale: ${EURO(tot)}
+
+Restiamo a disposizione.
+Cordiali saluti`);
+    const href = `mailto:${to}?subject=${subject}&body=${body}`;
+    window.location.href = href;
+  }
+  function composeWhatsApp(){
+    const c = initCur();
+    const { imp, tot } = collectFlat(c);
+    const msg = encodeURIComponent(
+`Preventivo ${c.id}
+Cliente: ${c.cliente||''}
+Articolo: ${c.articolo||''}
+Imponibile: ${EURO(imp)}
+Totale: ${EURO(tot)}`);
+    // se telefono contiene solo cifre, prefisso internazionale opzionale
+    const raw = (c.telefono||'').replace(/\D+/g,'');
+    const link = raw ? `https://wa.me/${raw}?text=${msg}` : `https://wa.me/?text=${msg}`;
+    window.open(link, '_blank');
   }
 
-  /* ====== Bind & Init ====== */
+  /* ===== Bind & Init ===== */
   function bind(){
     // Pulsanti
     $('#btnNew')?.addEventListener('click', (e)=>{ e.preventDefault(); clearEditorToNew(); });
@@ -364,6 +445,8 @@
       $('#imgInput') && ($('#imgInput').value = '');
       $('#imgPreview') && ($('#imgPreview').innerHTML = '');
       fillForm(); renderLines();
+      const btn = document.querySelector('[data-bs-target="#tab-editor"]');
+      if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
     });
     $('#btnSave')?.addEventListener('click', async (e)=>{
       e.preventDefault();
@@ -371,6 +454,12 @@
       const ok = await (window.dbApi?.saveToSupabase ? window.dbApi.saveToSupabase(false) : Promise.resolve(false));
       if (ok) clearEditorToNew();
     });
+
+    // PDF / Email / WhatsApp
+    $('#btnPDFDett')?.addEventListener('click', ()=> makePDF(true));
+    $('#btnPDFTot')?.addEventListener('click', ()=> makePDF(false));
+    $('#btnMail')?.addEventListener('click', composeEmail);
+    $('#btnWA')?.addEventListener('click', composeWhatsApp);
 
     // Catalogo
     $('#catalogSearch')?.addEventListener('input', e => renderCatalog(e.target.value));
@@ -421,6 +510,9 @@
     } catch(e){ console.warn('[realtime] errore', e); }
     bind();
   }
+
+  // Espone per refresh immediato dopo Salva
+  window.renderArchiveLocal = function(){ try { renderArchiveTable(); } catch(_){} };
 
   document.addEventListener('DOMContentLoaded', init);
 })();
