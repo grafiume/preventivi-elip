@@ -1,4 +1,5 @@
-/* Preventivi ELIP — app.js (2025-10-23, Archivio: % avanzamento + Chiusa + stato accettazione; fix openFromArchive) */
+
+/* Preventivi ELIP — app.js (2025-10-23, FIX: catalogo sempre visibile + load DB robusto) */
 (function(){
   'use strict';
 
@@ -28,22 +29,22 @@
     {code:"30",desc:"Montaggio, collaudo e verniciatura"},
     {code:"16",desc:"Ricambi vari"}
   ];
-  function ensureCatalog(){
+  function getCatalog(){
     try {
       const raw = localStorage.getItem('elip_catalog');
-      if (!raw) {
-        localStorage.setItem('elip_catalog', JSON.stringify(DEFAULT_CATALOG));
-      } else {
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed) || parsed.length === 0) {
-          localStorage.setItem('elip_catalog', JSON.stringify(DEFAULT_CATALOG));
-        }
-      }
-    } catch {
-      localStorage.setItem('elip_catalog', JSON.stringify(DEFAULT_CATALOG));
-    }
+      if (!raw) return DEFAULT_CATALOG.slice();
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) && arr.length ? arr : DEFAULT_CATALOG.slice();
+    } catch { return DEFAULT_CATALOG.slice(); }
   }
-  function getCatalog(){ try { return JSON.parse(localStorage.getItem('elip_catalog')||'[]'); } catch { return []; } }
+  function setCatalog(rows){
+    try { localStorage.setItem('elip_catalog', JSON.stringify(rows||[])); } catch {}
+  }
+  function ensureCatalog(){
+    // se manca o è vuoto, inizializza
+    const arr = getCatalog();
+    if (!arr.length) setCatalog(DEFAULT_CATALOG);
+  }
   function buildDatalist(){
     let dl = $('#catalogCodes');
     if (!dl) { dl = document.createElement('datalist'); dl.id = 'catalogCodes'; document.body.appendChild(dl); }
@@ -54,6 +55,32 @@
       o.label = `${x.code} - ${x.desc}`;
       dl.appendChild(o);
     });
+  }
+  function renderCatalog(filter=''){
+    const ul = $('#catalogList'); if (!ul) return;
+    const q = (filter||'').toLowerCase();
+    const rows = getCatalog().filter(x => (x.code+' '+x.desc).toLowerCase().includes(q));
+    ul.innerHTML = '';
+    if (rows.length===0) { ul.innerHTML = '<li class="list-group-item text-muted">Nessuna voce…</li>'; return; }
+    rows.forEach(x => {
+      const li = document.createElement('li');
+      li.className = 'list-group-item';
+      li.textContent = `${x.code} - ${x.desc}`;
+      li.addEventListener('click',()=> addLine({code:x.code,desc:x.desc,qty:1,price:0,done:false,doneBy:'',doneDate:''}));
+      ul.appendChild(li);
+    });
+  }
+  function editCatalog(){
+    const cur = JSON.stringify(getCatalog(), null, 2);
+    const next = prompt('Modifica catalogo (JSON):', cur);
+    if (!next) return;
+    try {
+      const parsed = JSON.parse(next);
+      if (!Array.isArray(parsed)) throw new Error('Deve essere un array');
+      setCatalog(parsed);
+      buildDatalist();
+      renderCatalog($('#catalogSearch')?.value||'');
+    } catch(e){ alert('JSON non valido: ' + e.message); }
   }
 
   /* ====== Stato corrente ====== */
@@ -184,23 +211,7 @@
     }
   }
 
-  /* ====== Helpers ====== */
-  function snapshotFormToCur(){
-    const c = initCur();
-    c.cliente   = ($('#cliente')?.value || '').trim();
-    c.articolo  = ($('#articolo')?.value || '').trim();
-    c.ddt       = ($('#ddt')?.value || '').trim();
-    c.telefono  = ($('#telefono')?.value || '').trim();
-    c.email     = ($('#email')?.value || '').trim();
-    c.dataInvio = ($('#dataInvio')?.value || '').trim();
-    c.dataAcc   = ($('#dataAcc')?.value || '').trim();
-    c.dataScad  = ($('#dataScad')?.value || '').trim();
-    c.note      = ($('#note')?.value || '');
-    setCurLight(c);
-    return c;
-  }
-
-  /* ====== Archivio: progress percent + Chiusa + stato accettazione ====== */
+  /* ====== Archivio ====== */
   function coerceArray(a){
     if (!a) return [];
     if (Array.isArray(a)) return a;
@@ -224,7 +235,6 @@
     }
     return toDo ? Math.round((done/toDo)*100) : 0;
   }
-
   function computeAccCounters(arr){
     let ok=0,no=0;
     (arr||[]).forEach(r => ((r.data_accettazione||'').toString().trim()? ok++ : no++));
@@ -238,7 +248,6 @@
     if (q && !(hitTxt(r.cliente)||hitTxt(r.articolo)||hitTxt(r.numero)||hitTxt(r.ddt))) return false;
     return true;
   }
-
   function openFromArchive(num){
     let arr = [];
     try { arr = JSON.parse(localStorage.getItem('elip_archive') || '[]') || []; } catch {}
@@ -264,7 +273,6 @@
     const btn = document.querySelector('[data-bs-target="#tab-editor"]');
     if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
   }
-
   function renderArchiveTable(){
     let arr = [];
     try { arr = JSON.parse(localStorage.getItem('elip_archive') || '[]') || []; } catch {}
@@ -279,7 +287,7 @@
       const pct = progressPctFromLines(r.linee);
       const isAccepted = !!(r.data_accettazione);
       const accBadge = isAccepted
-        ? '<span class="badge text-bg-success ms-2">Accettata</span>';
+        ? '<span class="badge text-bg-success ms-2">Accettata</span>'
         : '<span class="badge text-bg-danger ms-2">Non accettata</span>';
 
       const statoHtml = (pct === 100)
@@ -303,7 +311,7 @@
     computeAccCounters(rows);
   }
 
-  /* ====== Bind & Init ====== */
+  /* ====== Helpers ====== */
   function clearEditorToNew(){
     const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
     setCurLight(fresh);
@@ -313,7 +321,9 @@
     fillForm(); renderLines();
   }
 
+  /* ====== Bind & Init ====== */
   function bind(){
+    // Pulsanti
     $('#btnNew')?.addEventListener('click', (e)=>{ e.preventDefault(); clearEditorToNew(); });
     $('#btnClear')?.addEventListener('click', (e)=>{
       e.preventDefault();
@@ -327,71 +337,57 @@
     $('#btnSave')?.addEventListener('click', async (e)=>{
       e.preventDefault();
       snapshotFormToCur();
-      const ok = await window.dbApi.saveToSupabase(false);
+      const ok = await (window.dbApi?.saveToSupabase ? window.dbApi.saveToSupabase(false) : Promise.resolve(false));
       if (ok) clearEditorToNew();
     });
+
+    // Catalogo
+    $('#catalogSearch')?.addEventListener('input', e => renderCatalog(e.target.value));
+    $('#btnAddCustom')?.addEventListener('click', ()=> addLine({code:'',desc:'',qty:1,price:0,done:false,doneBy:'',doneDate:''}));
+    $('#btnEditCatalog')?.addEventListener('click', editCatalog);
+
+    // Archivio
+    $('#filterQuery')?.addEventListener('input', renderArchiveTable);
+    $('#fltAll')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltAll').classList.add('active'); $('#fltOk')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
+    $('#fltOk')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltOk').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
+    $('#fltNo')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltNo').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltOk')?.classList.remove('active'); renderArchiveTable(); });
 
     $('#archBody')?.addEventListener('click', (e)=>{
       const b = e.target.closest('button[data-open-num]');
       if (b){ openFromArchive(b.getAttribute('data-open-num')); }
     });
 
+    // Pill accettazione
     $('#dataAcc')?.addEventListener('input', updateAccPill);
     $('#dataAcc')?.addEventListener('change', updateAccPill);
-
-    // Catalogo quick search
-    $('#catalogSearch')?.addEventListener('input', e => {
-      const ul = $('#catalogList'); if (!ul) return;
-      const q = (e.target.value||'').toLowerCase();
-      const rows = getCatalog().filter(x => (x.code+' '+x.desc).toLowerCase().includes(q));
-      ul.innerHTML = '';
-      if (rows.length===0) { ul.innerHTML = '<li class="list-group-item text-muted">Nessuna voce…</li>'; return; }
-      rows.forEach(x => {
-        const li = document.createElement('li');
-        li.className='list-group-item';
-        li.textContent=`${x.code} - ${x.desc}`;
-        li.addEventListener('click',()=>{
-          const c = initCur();
-          c.lines.push({code:x.code,desc:x.desc,qty:1,price:0,done:false,doneBy:'',doneDate:''});
-          setCurLight(c); renderLines(); recalcTotals();
-        });
-        ul.appendChild(li);
-      });
-    });
-
-    // Filtri archivio
-    $('#filterQuery')?.addEventListener('input', renderArchiveTable);
-    $('#fltAll')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltAll').classList.add('active'); $('#fltOk')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
-    $('#fltOk')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltOk').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
-    $('#fltNo')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltNo').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltOk')?.classList.remove('active'); renderArchiveTable(); });
   }
 
-  function renderInitialCatalog(){
-    const ul = $('#catalogList'); if (!ul) return;
-    const rows = getCatalog();
-    ul.innerHTML = '';
-    rows.forEach(x => {
-      const li = document.createElement('li');
-      li.className='list-group-item';
-      li.textContent=`${x.code} - ${x.desc}`;
-      li.addEventListener('click',()=>{
-        const c = initCur();
-        c.lines.push({code:x.code,desc:x.desc,qty:1,price:0,done:false,doneBy:'',doneDate:''});
-        setCurLight(c); renderLines(); recalcTotals();
-      });
-      ul.appendChild(li);
-    });
+  function addLine(r){
+    const c = initCur();
+    c.lines.push(r);
+    setCurLight(c);
+    renderLines();
+    recalcTotals();
   }
 
   async function init(){
     ensureCatalog();
     buildDatalist();
-    renderInitialCatalog();
+    renderCatalog('');
     fillForm();
     renderLines();
-    try { await window.dbApi.loadArchive(); } catch {}
+    // Carica archivio da DB (se disponibile)
+    try {
+      if (window.dbApi?.loadArchive) {
+        await window.dbApi.loadArchive();
+      } else {
+        console.warn('[init] dbApi non disponibile (app-supabase.js non caricato?)');
+      }
+    } catch(e){ console.warn('[loadArchive] errore', e); }
     renderArchiveTable();
-    try { window.dbApi.subscribeRealtime(); } catch {}
+    try {
+      if (window.dbApi?.subscribeRealtime) window.dbApi.subscribeRealtime();
+    } catch(e){ console.warn('[realtime] errore', e); }
     bind();
   }
 
