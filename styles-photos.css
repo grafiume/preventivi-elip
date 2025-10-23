@@ -1,5 +1,5 @@
 
-/* --- Photo grid preview --- */
+/* Photos grid + remove button */
 #imgPreview{
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(164px, 1fr));
@@ -37,6 +37,4 @@
   place-items: center;
   cursor: pointer;
 }
-.photo-card .btn-remove:hover{
-  background: rgba(220,53,69,1);
-}
+.photo-card .btn-remove:hover{ background: rgba(220,53,69,1); }

@@ -1,23 +1,22 @@
 
-/* Preventivi ELIP — app.js (2025-10-23 photo queue grid + delete)
-   - Gestione foto: coda senza duplicati + griglia con X per rimuovere (164x164)
-   - Richiede app-supabase.js precedente per upload
+/* Preventivi ELIP — app-photos.js (2025-10-23 HOTFIX)
+   - Coda foto senza duplicati (compatibile con legacy __elipPhotosQueue = File[])
+   - Griglia 164x164 con bottone “×” per rimuovere
+   - Clic anteprima apre il modal #imgModal con l'immagine intera
+   - Espone __elipGetUploadFiles() e __elipClearUploadQueue()
 */
 (function(){
   'use strict';
 
   const $ = (s, r=document) => r.querySelector(s);
-  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
-  const EURO = n => (n||0).toLocaleString('it-IT', { style:'currency', currency:'EUR' });
-  const DTIT = s => s ? new Date(s).toLocaleDateString('it-IT') : '';
 
-  /* ===== Photo queue helpers ===== */
-  function ensurePhotoQueue(){
-    if (!Array.isArray(window.__elipPhotosQueue)) window.__elipPhotosQueue = [];
-    if (!window.__elipPhotosIndex) window.__elipPhotosIndex = new Map(); // key -> idx
-  }
-  function fileKey(f){ return `${f.name}|${f.size}|${f.lastModified}`; }
+  // ---------- Internal state ----------
+  let items = [];               // [{id,file,key,thumb,dataUrl}]
+  const indexByKey = new Map(); // key -> idx
 
+  function fileKey(f){ return `${f?.name||'?' }|${f?.size||0}|${f?.lastModified||0}`; }
+
+  // ---------- File helpers ----------
   function readFileAsDataURL(file){
     return new Promise((res,rej)=>{
       const fr = new FileReader();
@@ -26,10 +25,9 @@
       fr.readAsDataURL(file);
     });
   }
-  async function makeLocalThumb(file, size=164){
-    const url = await readFileAsDataURL(file);
+  async function makeThumbFromDataURL(dataUrl, size=164){
     const img = new Image();
-    img.src = url; await img.decode();
+    img.src = dataUrl; await img.decode();
     const ratio = Math.max(size / img.width, size / img.height);
     const w = Math.round(img.width * ratio);
     const h = Math.round(img.height * ratio);
@@ -42,44 +40,48 @@
     return canvas.toDataURL('image/jpeg', 0.85);
   }
 
-  async function addFilesToQueue(files){
-    ensurePhotoQueue();
-    for (const f of files){
+  // ---------- Queue ops ----------
+  async function addFiles(files){
+    const list = Array.from(files||[]).filter(Boolean);
+    for (const f of list){
       const key = fileKey(f);
-      if (window.__elipPhotosIndex.has(key)) continue; // evita duplicati
-      const thumb = await makeLocalThumb(f, 164);
-      const id = crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'_'+Math.random().toString(36).slice(2,8));
-      const item = { id, file: f, key, thumb };
-      window.__elipPhotosIndex.set(key, window.__elipPhotosQueue.length);
-      window.__elipPhotosQueue.push(item);
+      if (indexByKey.has(key)) continue; // evita duplicati
+      const dataUrl = await readFileAsDataURL(f);
+      const thumb = await makeThumbFromDataURL(dataUrl, 164);
+      const id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now()+'_'+Math.random().toString(36).slice(2,8));
+      const item = { id, file: f, key, dataUrl, thumb };
+      indexByKey.set(key, items.length);
+      items.push(item);
     }
-    renderPhotoPreviewFromQueue();
+    render();
   }
 
-  function removeFromQueue(id){
-    ensurePhotoQueue();
-    const arr = window.__elipPhotosQueue;
-    const idx = arr.findIndex(x=>x.id===id);
-    if (idx>=0){
-      const key = arr[idx].key;
-      arr.splice(idx,1);
-      window.__elipPhotosIndex.delete(key);
-      // ricostruisci l'indice
-      window.__elipPhotosIndex.clear();
-      arr.forEach((it,i)=> window.__elipPhotosIndex.set(it.key,i));
-      renderPhotoPreviewFromQueue();
+  function removeById(id){
+    const i = items.findIndex(x=>x.id===id);
+    if (i>=0){
+      const key = items[i].key;
+      items.splice(i,1);
+      indexByKey.delete(key);
+      // rebuild index
+      indexByKey.clear();
+      items.forEach((it,idx)=> indexByKey.set(it.key, idx));
+      render();
     }
   }
 
-  function renderPhotoPreviewFromQueue(){
-    const wrap = $('#imgPreview'); if (!wrap) return;
-    ensurePhotoQueue();
+  // ---------- Render ----------
+  function render(){
+    const wrap = $('#imgPreview');
+    if (!wrap) return;
     wrap.innerHTML = '';
-    for (const it of window.__elipPhotosQueue){
+    for (const it of items){
+      if (!it || !it.thumb) continue;
       const card = document.createElement('div');
       card.className = 'photo-card';
       const img = document.createElement('img');
-      img.src = it.thumb; img.alt = it.file.name;
+      img.src = it.thumb;
+      img.alt = it.file?.name || 'Foto';
+      img.dataset.full = it.dataUrl || '';
       const btn = document.createElement('button');
       btn.className = 'btn-remove'; btn.type='button'; btn.textContent = '×';
       btn.setAttribute('data-remove-id', it.id);
@@ -89,31 +91,62 @@
     }
   }
 
-  /* ===== Bind photo UI ===== */
-  function bindPhotoUI(){
-    $('#imgInput')?.addEventListener('change', async e => {
-      const files = Array.from(e.target.files||[]);
-      await addFilesToQueue(files);
-      // non azzeriamo l'input per permettere più add; per rifare la stessa selezione, l'utente può premere "cancella" e riselezionare
-    });
-    $('#imgPreview')?.addEventListener('click', (e)=>{
-      const btn = e.target.closest('button[data-remove-id]');
-      if (btn) removeFromQueue(btn.getAttribute('data-remove-id'));
-    });
+  // ---------- Modal preview ----------
+  function openInModal(dataUrl){
+    const modal = document.getElementById('imgModal');
+    const target = document.getElementById('imgModalImg');
+    if (!target) return;
+    target.src = dataUrl || '';
+    if (modal) {
+      try { new bootstrap.Modal(modal).show(); } catch { modal.style.display='block'; }
+    }
   }
 
-  /* ===== Expose queue to app-supabase.js uploader ===== */
+  // ---------- Bindings ----------
+  function bind(){
+    const input = document.getElementById('imgInput');
+    if (input){
+      input.addEventListener('change', async (e)=>{
+        await addFiles(e.target.files);
+      });
+    }
+    const wrap = document.getElementById('imgPreview');
+    if (wrap){
+      wrap.addEventListener('click', (e)=>{
+        const btn = e.target.closest('button[data-remove-id]');
+        if (btn){ removeById(btn.getAttribute('data-remove-id')); return; }
+        const img = e.target.closest('img');
+        if (img && img.dataset.full){
+          openInModal(img.dataset.full);
+        }
+      });
+    }
+  }
+
+  // ---------- Public APIs for uploader ----------
   window.__elipGetUploadFiles = function(){
-    ensurePhotoQueue();
-    // restituisce la lista di File da caricare
-    return window.__elipPhotosQueue.map(x=>x.file);
+    return items.map(x=>x.file).filter(Boolean);
   };
   window.__elipClearUploadQueue = function(){
-    window.__elipPhotosQueue = [];
-    window.__elipPhotosIndex = new Map();
-    renderPhotoPreviewFromQueue();
+    items = [];
+    indexByKey.clear();
+    render();
   };
 
-  /* ===== Minimal existing init glue (only photo part) ===== */
-  document.addEventListener('DOMContentLoaded', bindPhotoUI);
+  // ---------- Backward-compat import from legacy queue ----------
+  async function importLegacy(){
+    if (Array.isArray(window.__elipPhotosQueue) && window.__elipPhotosQueue.length){
+      const onlyFiles = window.__elipPhotosQueue.filter(f => f && typeof f.name === 'string' && typeof f.size === 'number');
+      window.__elipPhotosQueue = []; // evita doppioni
+      if (onlyFiles.length){
+        await addFiles(onlyFiles);
+      }
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', async ()=>{
+    bind();
+    await importLegacy();
+    render();
+  });
 })();

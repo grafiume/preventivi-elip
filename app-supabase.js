@@ -1,8 +1,8 @@
 
-/* Preventivi ELIP — app-supabase.js (2025-10-23)
-   - Rimuove 'photos' dal payload (niente errore PGRST204 se la colonna non esiste)
-   - Upload foto + generazione thumbnail 164x164 nel bucket 'photos' (path: numero/ e numero/thumbs/)
-   - Refresh Archivio dopo salvataggio (con retry)
+/* Preventivi ELIP — app-supabase.js (2025-10-23, foto via API nuove)
+   - Nessuna colonna 'photos' nel payload (evita 400 PGRST204)
+   - Upload foto leggendo dalla nuova coda __elipGetUploadFiles() con fallback
+   - Refresh Archivio dopo Salva
 */
 (function(){
   'use strict';
@@ -55,7 +55,6 @@
       linee: (cur.lines || []),
       imponibile: nnumber(imponibile),
       totale: nnumber(totale)
-      // Niente 'photos' nel payload → evita PGRST204
     };
   }
 
@@ -93,68 +92,19 @@
     }
   }
 
-  async function fileToImageBitmap(file){
-    const url = URL.createObjectURL(file);
-    try {
-      const img = await createImageBitmap(await (await fetch(url)).blob());
-      return img;
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  }
-  async function makeThumb(file, size=164){
-    const img = await fileToImageBitmap(file);
-    const ratio = Math.max(size / img.width, size / img.height);
-    const w = Math.round(img.width * ratio);
-    const h = Math.round(img.height * ratio);
-    const canvas = document.createElement('canvas');
-    canvas.width = size; canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = true;
-    ctx.clearRect(0,0,size,size);
-    // center-crop
-    ctx.drawImage(img, (size - w)/2, (size - h)/2, w, h);
-    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
-    return blob; // 164x164 jpg
-  }
-
   async function uploadPhoto(file, numero){
     const c = supa();
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const baseName = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
-    const fname = `${baseName}.${ext}`;
+    const fname = `${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
     const path = `${numero}/${fname}`;
-    // Upload originale
     await withRetry(async () => {
       const { error } = await c.storage.from('photos').upload(path, file, { cacheControl: '3600', upsert: false });
       if (error) throw error;
     });
-    // Thumbnail 164x164
-    let thumbUrl = null;
-    try {
-      const thumbBlob = await makeThumb(file, 164);
-      const tpath = `${numero}/thumbs/${baseName}.jpg`;
-      await withRetry(async () => {
-        const { error } = await c.storage.from('photos').upload(tpath, thumbBlob, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
-        if (error) throw error;
-      });
-      const { data: t } = c.storage.from('photos').getPublicUrl(tpath);
-      thumbUrl = t?.publicUrl || null;
-    } catch (e) {
-      console.warn('[thumb upload failed]', e?.message || e);
-    }
-
-    // Public URL originale
     const { data: pub } = c.storage.from('photos').getPublicUrl(path);
     const url = pub?.publicUrl || null;
-
-    // Persisti nella tabella photos (se presente)
-    try {
-      const row = thumbUrl ? [{ record_num: numero, path, url, thumb_url: thumbUrl }] : [{ record_num: numero, path, url }];
-      await c.from('photos').insert(row);
-    } catch(_) {}
-
-    return { path, url, thumbUrl };
+    try { await c.from('photos').insert([{ record_num: numero, path, url }]); } catch(_) {}
+    return { path, url };
   }
 
   async function loadArchive(){
@@ -169,9 +119,7 @@
     return data || [];
   }
 
-  async function loadArchiveRetry(){
-    return await withRetry(async () => await loadArchive(), 3, 300);
-  }
+  async function loadArchiveRetry(){ return await withRetry(async () => await loadArchive(), 3, 300); }
 
   function subscribeRealtime(){
     const c = supa();
@@ -199,19 +147,21 @@
       return false;
     }
 
-    // Foto (best-effort)
-    const queue = Array.isArray(window.__elipPhotosQueue) ? window.__elipPhotosQueue.slice() : [];
-    for (const f of queue) {
+    // Foto (best-effort) dalla coda nuova, con fallback legacy
+    const queueFiles = (typeof window.__elipGetUploadFiles === 'function')
+      ? window.__elipGetUploadFiles()
+      : (Array.isArray(window.__elipPhotosQueue) ? window.__elipPhotosQueue : []);
+
+    for (const f of queueFiles) {
       try { await uploadPhoto(f, cur.id); } catch (e) { console.warn('[uploadPhoto]', e); }
     }
-    window.__elipPhotosQueue = [];
+    if (typeof window.__elipClearUploadQueue === 'function') window.__elipClearUploadQueue();
+    else window.__elipPhotosQueue = [];
 
     await loadArchiveRetry();
     if (typeof window.renderArchiveLocal === 'function') {
       try { window.renderArchiveLocal(); } catch (_) {}
     }
-
-    if (typeof window.toastSaved === 'function') window.toastSaved();
 
     // Tab Archivio se richiesto
     if (archiveAfter) {
