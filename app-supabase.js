@@ -1,17 +1,13 @@
 
-/* Preventivi ELIP — app-supabase.js (two-file pack 2025-10-23)
-   - No 'photos' column in preventivi payload
-   - Upload photo + 164x164 thumb to Storage bucket 'photos'
-   - loadArchive, loadPhotosFor, saveToSupabase
-*/
+/* Preventivi ELIP — app-supabase.js (FINAL schema: photos[id,created_at,record_num,path,url]) */
 (function(){
   'use strict';
-
   let client = null;
   function supa() {
     if (client) return client;
     if (!window.supabase || !window.supabase.createClient) throw new Error('Supabase non caricato');
     const cfg = window.supabaseConfig || {};
+    if (!cfg.url || !cfg.anon) throw new Error('config.js mancante o incompleto');
     client = window.supabase.createClient(cfg.url, cfg.anon, { auth: { persistSession: false } });
     return client;
   }
@@ -72,27 +68,16 @@
     const c = supa();
     const { data: found, error: selErr } = await c.from('preventivi').select('id').eq('numero', payload.numero).maybeSingle();
     if (selErr && selErr.code !== 'PGRST116') return { error: selErr };
-
     if (found?.id) {
-      try {
-        const { data } = await saveCompat('preventivi', payload, { id: found.id });
-        return { data };
-      } catch (e) {
-        console.error('[preventivi UPDATE error]', e);
-        return { error: e };
-      }
+      try { const { data } = await saveCompat('preventivi', payload, { id: found.id }); return { data }; }
+      catch (e) { console.error('[preventivi UPDATE error]', e); return { error: e }; }
     } else {
-      try {
-        const { data } = await saveCompat('preventivi', payload, null);
-        return { data };
-      } catch (e) {
-        console.error('[preventivi INSERT error]', e);
-        return { error: e };
-      }
+      try { const { data } = await saveCompat('preventivi', payload, null); return { data }; }
+      catch (e) { console.error('[preventivi INSERT error]', e); return { error: e }; }
     }
   }
 
-  // ---- thumbnails client-side ----
+  // ---------- Photo helpers ----------
   async function fileToDataURL(file){
     const fr = new FileReader();
     return await new Promise((res,rej)=>{ fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(file); });
@@ -113,6 +98,21 @@
     return blob;
   }
 
+  function publicUrl(path){
+    const { data } = supa().storage.from('photos').getPublicUrl(path);
+    return data?.publicUrl || null;
+  }
+
+  function deriveThumbPathFromOriginalPath(path){
+    // PV-2025-000005/1761251592928_w4ai3j.jpg  -> PV-2025-000005/thumbs/1761251592928_w4ai3j.jpg
+    if (!path) return null;
+    const i = path.lastIndexOf('/');
+    if (i < 0) return null;
+    const prefix = path.slice(0, i);      // PV-2025-000005
+    const fname  = path.slice(i+1);       // 176125...jpg
+    return `${prefix}/thumbs/${fname.replace(/\.[a-z0-9]+$/i, '.jpg')}`;
+  }
+
   async function uploadPhoto(file, numero){
     const c = supa();
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
@@ -126,8 +126,7 @@
       if (error) throw error;
     });
 
-    // Thumb 164x164
-    let thumb_url = null;
+    // Thumb 164x164 in Storage
     try {
       const dataUrl = await fileToDataURL(file);
       const thumbBlob = await dataURLToThumbBlob(dataUrl, 164);
@@ -136,21 +135,19 @@
         const { error } = await c.storage.from('photos').upload(tpath, thumbBlob, { cacheControl: '3600', upsert: false, contentType:'image/jpeg' });
         if (error) throw error;
       });
-      const { data: t } = c.storage.from('photos').getPublicUrl(tpath);
-      thumb_url = t?.publicUrl || null;
     } catch (e) { console.warn('[thumb fail]', e?.message||e); }
 
     // URL originale pubblico
-    const { data: pub } = c.storage.from('photos').getPublicUrl(path);
-    const url = pub?.publicUrl || null;
+    const url = publicUrl(path);
 
-    // salva in tabella 'photos' se esiste
+    // Inserimento su public.photos (solo colonne esistenti)
     try {
-      const row = { record_num: numero, path, url, thumb_url };
-      await c.from('photos').insert([row]);
-    } catch(_) {}
+      await c.from('photos').insert([{ record_num: numero, path, url }]);
+    } catch (e) {
+      console.warn('[photos insert skipped]', e?.message||e);
+    }
 
-    return { path, url, thumb_url };
+    return { path, url };
   }
 
   async function loadPhotosFor(numero){
@@ -158,53 +155,38 @@
     try {
       const { data, error } = await c
         .from('photos')
-        .select('url, thumb_url, path')
+        .select('url, path, created_at')
         .eq('record_num', numero)
         .order('created_at', { ascending: true });
       if (error) return [];
-      const urls = (data||[]).map(r => r.thumb_url || deriveThumbFromPath(r.path) || r.url).filter(Boolean);
-      return urls;
+      const out = [];
+      for (const r of (data||[])) {
+        const tpath = deriveThumbPathFromOriginalPath(r.path);
+        const turl = tpath ? publicUrl(tpath) : null;
+        out.push(turl || r.url);
+      }
+      return out;
     } catch { return []; }
   }
-  function deriveThumbFromPath(path){
-    if (!path) return null;
-    const m = path.match(/^([^/]+)\/([^/]+)\.([a-z0-9]+)$/i);
-    if (!m) return null;
-    const numero = m[1];
-    const base = m[2];
-    const tpath = `${numero}/thumbs/${base}.jpg`;
-    const { data } = supa().storage.from('photos').getPublicUrl(tpath);
-    return data?.publicUrl || null;
-  }
 
+  // ---------- Archive ----------
   async function loadArchive(){
     const c = supa();
     const { data, error } = await c.from('preventivi').select('*').order('created_at', { ascending: false });
-    if (error) {
-      console.warn('[supabase] loadArchive error:', error);
-      try { localStorage.setItem('elip_archive', '[]'); } catch {}
-      return [];
-    }
+    if (error) { console.warn('[supabase] loadArchive error:', error); try { localStorage.setItem('elip_archive', '[]'); } catch {} ; return []; }
     try { localStorage.setItem('elip_archive', JSON.stringify(data || [])); } catch {}
     return data || [];
   }
-
   async function loadArchiveRetry(){ return await withRetry(async () => await loadArchive(), 3, 300); }
 
-  async function saveToSupabase(archiveAfter){
+  async function saveToSupabase(goArchive){
     const cur = (() => { try { return JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch { return null; } })();
     if (!cur) { alert('Nessun preventivo in memoria.'); return false; }
-
     const payload = buildPayload(cur);
     const { error } = await upsertPreventivoByNumero(payload);
-    if (error) {
-      const msg = error?.message || JSON.stringify(error);
-      console.error('[saveToSupabase] payload:', payload, 'error:', error);
-      alert('Errore salvataggio: ' + msg);
-      return false;
-    }
+    if (error) { alert('Errore salvataggio: ' + (error?.message || JSON.stringify(error))); return false; }
 
-    // Upload queue (best-effort)
+    // Upload queue
     const queueFiles = (typeof window.__elipGetUploadFiles === 'function')
       ? window.__elipGetUploadFiles()
       : (Array.isArray(window.__elipPhotosQueue) ? window.__elipPhotosQueue : []);
@@ -220,11 +202,10 @@
       try { window.renderArchiveLocal(); } catch (_) {}
     }
 
-    if (archiveAfter) {
+    if (goArchive) {
       const t = document.querySelector('[data-bs-target="#tab-archivio"]');
       if (t) { try { new bootstrap.Tab(t).show(); } catch { t.click(); } }
     }
-
     return true;
   }
 

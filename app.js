@@ -1,20 +1,12 @@
 
-/* Preventivi ELIP — app.js (2025-10-23)
-   - Fix: aggiunta fillForm()
-   - Catalogo robusto (fallback default)
-   - Archivio: percentuale avanzamento + badge "Chiusa" (100%)
-   - Stato accettazione affiancato quando < 100%
-   - Dopo Salva: pulizia editor e nuovo numero
-*/
+/* Preventivi ELIP — app.js (FINAL) */
 (function(){
   'use strict';
-
   const $ = (s, r=document) => r.querySelector(s);
-  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
   const EURO = n => (n||0).toLocaleString('it-IT', { style:'currency', currency:'EUR' });
   const DTIT = s => s ? new Date(s).toLocaleDateString('it-IT') : '';
 
-  /* ====== Catalogo ====== */
+  // ===== Catalogo =====
   const DEFAULT_CATALOG=[
     {code:"05",desc:"Smontaggio completo del motore sistematico"},
     {code:"29",desc:"Lavaggio componenti e trattamento termico avvolgimenti"},
@@ -43,13 +35,8 @@
       return Array.isArray(arr) && arr.length ? arr : DEFAULT_CATALOG.slice();
     } catch { return DEFAULT_CATALOG.slice(); }
   }
-  function setCatalog(rows){
-    try { localStorage.setItem('elip_catalog', JSON.stringify(rows||[])); } catch {}
-  }
-  function ensureCatalog(){
-    const arr = getCatalog();
-    if (!arr.length) setCatalog(DEFAULT_CATALOG);
-  }
+  function setCatalog(rows){ try { localStorage.setItem('elip_catalog', JSON.stringify(rows||[])); } catch {} }
+  function ensureCatalog(){ const arr = getCatalog(); if (!arr.length) setCatalog(DEFAULT_CATALOG); }
   function buildDatalist(){
     let dl = $('#catalogCodes');
     if (!dl) { dl = document.createElement('datalist'); dl.id = 'catalogCodes'; document.body.appendChild(dl); }
@@ -75,30 +62,10 @@
       ul.appendChild(li);
     });
   }
-  function editCatalog(){
-    const cur = JSON.stringify(getCatalog(), null, 2);
-    const next = prompt('Modifica catalogo (JSON):', cur);
-    if (!next) return;
-    try {
-      const parsed = JSON.parse(next);
-      if (!Array.isArray(parsed)) throw new Error('Deve essere un array');
-      setCatalog(parsed);
-      buildDatalist();
-      renderCatalog($('#catalogSearch')?.value||'');
-    } catch(e){ alert('JSON non valido: ' + e.message); }
-  }
 
-  /* ====== Stato corrente ====== */
-  window.__elipPhotosQueue = [];
+  // ===== Stato =====
   function getCur(){ try { return JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch { return null; } }
-  function setCurLight(o){
-    try {
-      if (!o) { localStorage.removeItem('elip_current'); return; }
-      const { images, img, photoData, previewData, ...rest } = o;
-      if (typeof rest.note === 'string' && rest.note.length > 4000) rest.note = rest.note.slice(0,4000);
-      localStorage.setItem('elip_current', JSON.stringify(rest));
-    } catch { try{ localStorage.removeItem('elip_current'); }catch{} }
-  }
+  function setCurLight(o){ try { localStorage.setItem('elip_current', JSON.stringify(o||{})); } catch {} }
   function nextNumero(){
     const y = new Date().getFullYear();
     const k = 'elip_seq_'+y;
@@ -115,7 +82,6 @@
     return cur;
   }
 
-  /* ====== Pill accettazione ====== */
   function updateAccPill(){
     const has = ($('#dataAcc')?.value || '').trim().length > 0;
     const pill = $('#okPill');
@@ -124,8 +90,6 @@
     pill.classList.toggle('acc-yes', has);
     pill.classList.toggle('acc-no', !has);
   }
-
-  /* ====== Progress & Totali (Editor) ====== */
   function updateProgress(){
     const c = initCur();
     let toDo=0, done=0;
@@ -139,9 +103,6 @@
   }
   function recalcTotals(){
     const c = initCur();
-    ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id => {
-      const el = $('#'+id); if (el) c[id] = el.value;
-    });
     let imp=0;
     (c.lines||[]).forEach((r,i)=>{
       const t = (+r.qty||0) * (+r.price||0);
@@ -152,12 +113,18 @@
     $('#imponibile') && ($('#imponibile').textContent = EURO(imp));
     $('#iva') && ($('#iva').textContent = EURO(iva));
     $('#totale') && ($('#totale').textContent = EURO(tot));
-    setCurLight(c);
     updateProgress();
     updateAccPill();
   }
 
-  /* ====== Editor righe ====== */
+  // ===== Righe =====
+  function addLine(r){
+    const c = initCur();
+    c.lines.push(r);
+    setCurLight(c);
+    renderLines();
+    recalcTotals();
+  }
   function renderLines(){
     const c = initCur();
     const body = $('#linesBody'); if (!body) return;
@@ -216,40 +183,93 @@
     }
   }
 
-  /* ====== Helpers ====== */
-  function snapshotFormToCur(){
-    const c = initCur();
-    c.cliente   = ($('#cliente')?.value || '').trim();
-    c.articolo  = ($('#articolo')?.value || '').trim();
-    c.ddt       = ($('#ddt')?.value || '').trim();
-    c.telefono  = ($('#telefono')?.value || '').trim();
-    c.email     = ($('#email')?.value || '').trim();
-    c.dataInvio = ($('#dataInvio')?.value || '').trim();
-    c.dataAcc   = ($('#dataAcc')?.value || '').trim();
-    c.dataScad  = ($('#dataScad')?.value || '').trim();
-    c.note      = ($('#note')?.value || '');
-    setCurLight(c);
-    return c;
+  // ===== Foto (locale + server) =====
+  let photoItems = [];            // [{id,file,key,thumb,dataUrl,origin}]
+  const photoIndex = new Map();   // key -> idx
+  function fileKey(f){ return `${f?.name||'?' }|${f?.size||0}|${f?.lastModified||0}`; }
+  function readFileAsDataURL(file){
+    return new Promise((res,rej)=>{
+      const fr = new FileReader();
+      fr.onload = ()=> res(fr.result);
+      fr.onerror = rej;
+      fr.readAsDataURL(file);
+    });
   }
-  function fillForm(){
-    const c = initCur();
-    const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
-    ids.forEach(id => { const el = $('#'+id); if (el) el.value = c[id] || ''; });
-    const q = $('#quoteId'); if (q) q.textContent = c.id;
-    updateAccPill();
-    updateProgress();
-    recalcTotals();
+  async function makeThumbFromDataURL(dataUrl, size=164){
+    const img = new Image();
+    img.src = dataUrl; await img.decode();
+    const ratio = Math.max(size / img.width, size / img.height);
+    const w = Math.round(img.width * ratio);
+    const h = Math.round(img.height * ratio);
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.clearRect(0,0,size,size);
+    ctx.drawImage(img, (size - w)/2, (size - h)/2, w, h);
+    return canvas.toDataURL('image/jpeg', 0.85);
   }
+  async function addLocalFiles(files){
+    const list = Array.from(files||[]).filter(Boolean);
+    for (const f of list){
+      const key = fileKey(f);
+      if (photoIndex.has(key)) continue;
+      const dataUrl = await readFileAsDataURL(f);
+      const thumb = await makeThumbFromDataURL(dataUrl, 164);
+      const id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now()+'_'+Math.random().toString(36).slice(2,8));
+      const item = { id, file: f, key, dataUrl, thumb, origin:'local' };
+      photoIndex.set(key, photoItems.length);
+      photoItems.push(item);
+    }
+    renderPhotoArea();
+  }
+  function setServerThumbs(urls){
+    photoItems = photoItems.filter(x => x.origin === 'local');
+    for (const u of (urls||[])){
+      const id = 'srv_'+(crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2,10));
+      photoItems.push({ id, file:null, key:'srv:'+id, dataUrl:u, thumb:u, origin:'server' });
+    }
+    renderPhotoArea();
+  }
+  function renderPhotoArea(){
+    const wrap = document.getElementById('imgPreview');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    for (const it of photoItems){
+      if (!it || !it.thumb) continue;
+      const card = document.createElement('div');
+      card.className = 'border rounded position-relative';
+      card.style.width='164px'; card.style.height='164px'; card.style.overflow='hidden'; card.style.display='inline-block'; card.style.marginRight='.5rem'; card.style.marginBottom='.5rem';
+      const img = document.createElement('img');
+      img.src = it.thumb; img.alt = it.file?.name || 'Foto';
+      img.style.width='100%'; img.style.height='100%'; img.style.objectFit='cover';
+      img.dataset.full = it.dataUrl || it.thumb;
+      card.appendChild(img);
+      if (it.origin==='local'){
+        const btn = document.createElement('button');
+        btn.type='button'; btn.textContent='×';
+        btn.className='btn btn-sm btn-danger position-absolute';
+        btn.style.top='.25rem'; btn.style.right='.25rem'; btn.style.lineHeight='1';
+        btn.setAttribute('data-remove-id', it.id);
+        card.appendChild(btn);
+      } else {
+        const badge = document.createElement('div');
+        badge.textContent='cloud';
+        badge.className='badge text-bg-primary position-absolute';
+        badge.style.left='.25rem'; badge.style.top='.25rem';
+        card.appendChild(badge);
+      }
+      wrap.appendChild(card);
+    }
+  }
+  window.__elipGetUploadFiles = function(){ return photoItems.filter(x=>x.origin==='local').map(x=>x.file).filter(Boolean); };
+  window.__elipClearUploadQueue = function(){ photoItems = photoItems.filter(x=>x.origin!=='local'); renderPhotoArea(); };
 
-  /* ====== Archivio: progress percent + Chiusa + stato accettazione ====== */
-  function coerceArray(a){
-    if (!a) return [];
-    if (Array.isArray(a)) return a;
-    try { const p = JSON.parse(a); return Array.isArray(p) ? p : []; } catch { return []; }
-  }
+  // ===== Archivio =====
+  function coerceArray(a){ if (!a) return []; if (Array.isArray(a)) return a; try{const p=JSON.parse(a); return Array.isArray(p)?p:[];}catch{return [];} }
   function lineHasWork(e){
-    const desc = (e.desc ?? e.descrizione ?? e.DESCRIZIONE ?? '').toString().trim();
-    const qty  = Number(e.qty ?? e.qta ?? e.quantita ?? 0) || 0;
+    const desc = (e.desc ?? e.descrizione ?? '').toString().trim();
+    const qty  = Number(e.qty ?? e.qta ?? 0) || 0;
     const price= Number(e.price ?? e.prezzo ?? 0) || 0;
     return desc !== '' || qty > 0 || price > 0;
   }
@@ -265,45 +285,6 @@
     }
     return toDo ? Math.round((done/toDo)*100) : 0;
   }
-
-  function computeAccCounters(arr){
-    let ok=0,no=0;
-    (arr||[]).forEach(r => ((r.data_accettazione||'').toString().trim()? ok++ : no++));
-    const el = $('#accCounters'); if (el) el.textContent = `Accettati: ${ok} — Da accettare: ${no}`;
-  }
-  function passFilter(r, mode, q){
-    const hitTxt = (txt) => (String(txt||'').toLowerCase().includes(q));
-    const accepted = !!(r.data_accettazione);
-    if (mode==='ok' && !accepted) return false;
-    if (mode==='no' && accepted) return false;
-    if (q && !(hitTxt(r.cliente)||hitTxt(r.articolo)||hitTxt(r.numero)||hitTxt(r.ddt))) return false;
-    return true;
-  }
-  function openFromArchive(num){
-    let arr = [];
-    try { arr = JSON.parse(localStorage.getItem('elip_archive') || '[]') || []; } catch {}
-    const r = arr.find(x => x.numero === num);
-    if (!r) return;
-    const cur = {
-      id: r.numero || nextNumero(),
-      createdAt: r.created_at || new Date().toISOString(),
-      cliente: r.cliente || '',
-      articolo: r.articolo || '',
-      ddt: r.ddt || '',
-      telefono: r.telefono || '',
-      email: r.email || '',
-      dataInvio: r.data_invio || '',
-      dataAcc: r.data_accettazione || '',
-      dataScad: r.data_scadenza || '',
-      note: r.note || '',
-      lines: r.linee || []
-    };
-    setCurLight(cur);
-    fillForm();
-    renderLines();
-    const btn = document.querySelector('[data-bs-target="#tab-editor"]');
-    if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
-  }
   function renderArchiveTable(){
     let arr = [];
     try { arr = JSON.parse(localStorage.getItem('elip_archive') || '[]') || []; } catch {}
@@ -311,7 +292,14 @@
     const q = ($('#filterQuery')?.value||'').trim().toLowerCase();
     const mode = ($('#fltOk')?.classList.contains('active') ? 'ok' :
                   $('#fltNo')?.classList.contains('active') ? 'no' : 'all');
-    const rows = arr.filter(r => passFilter(r, mode, q));
+    const rows = arr.filter(r => {
+      const hitTxt = (txt) => (String(txt||'').toLowerCase().includes(q));
+      const accepted = !!(r.data_accettazione);
+      if (mode==='ok' && !accepted) return false;
+      if (mode==='no' && accepted) return false;
+      if (q && !(hitTxt(r.cliente)||hitTxt(r.articolo)||hitTxt(r.numero)||hitTxt(r.ddt))) return false;
+      return true;
+    });
 
     tbody.innerHTML = '';
     rows.forEach(r => {
@@ -339,45 +327,275 @@
         <td><button class="btn btn-sm btn-outline-primary" data-open-num="${r.numero}">Apri</button></td>`;
       tbody.appendChild(tr);
     });
-    computeAccCounters(rows);
+  }
+  window.renderArchiveLocal = function(){ try { renderArchiveTable(); } catch{} };
+
+  function openFromArchive(num){
+    let arr = [];
+    try { arr = JSON.parse(localStorage.getItem('elip_archive') || '[]') || []; } catch {}
+    const r = arr.find(x => x.numero === num);
+    if (!r) return;
+    const cur = {
+      id: r.numero || nextNumero(),
+      createdAt: r.created_at || new Date().toISOString(),
+      cliente: r.cliente || '',
+      articolo: r.articolo || '',
+      ddt: r.ddt || '',
+      telefono: r.telefono || '',
+      email: r.email || '',
+      dataInvio: r.data_invio || '',
+      dataAcc: r.data_accettazione || '',
+      dataScad: r.data_scadenza || '',
+      note: r.note || '',
+      lines: r.linee || []
+    };
+    setCurLight(cur);
+    fillForm();
+    renderLines();
+    try { window.dbApi?.loadPhotosFor(cur.id).then(setServerThumbs); } catch {}
+    const btn = document.querySelector('[data-bs-target="#tab-editor"]');
+    if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
+  }
+  window.openFromArchive = openFromArchive;
+
+  // ===== PDF / Email / WhatsApp =====
+  function collectFlat(c){
+    let imp=0; (c.lines||[]).forEach(r=> imp += (+r.qty||0)*(+r.price||0));
+    const iva = imp*0.22, tot = imp+iva;
+    return { imp, iva, tot };
+  }
+  async function makePDF(detail){
+    const c = initCur();
+    const jsPDF = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : null;
+    if (!jsPDF) { alert('jsPDF non disponibile'); return; }
+    const doc = new jsPDF({ unit:'pt', format:'a4' });
+    const title = `Preventivo ${c.id}`;
+    doc.setFontSize(16); doc.text(title, 40, 40);
+    doc.setFontSize(11);
+    doc.text(`Cliente: ${c.cliente||''}`, 40, 70);
+    doc.text(`Articolo: ${c.articolo||''}`, 40, 90);
+    doc.text(`DDT: ${c.ddt||''}`, 40, 110);
+    doc.text(`Data invio: ${DTIT(c.dataInvio)||''}`, 40, 130);
+    doc.text(`Data accettazione: ${DTIT(c.dataAcc)||''}`, 40, 150);
+    doc.text(`Scadenza lavori: ${DTIT(c.dataScad)||''}`, 40, 170);
+    if (detail && doc.autoTable) {
+      const rows = (c.lines||[]).map(r => [r.code||'', r.desc||'', r.qty||0, (r.price||0), ((+r.qty||0)*(+r.price||0))]);
+      if (rows.length) {
+        doc.autoTable({
+          startY: 190,
+          head: [['Cod', 'Descrizione', 'Q.tà', 'Prezzo €', 'Tot. €']],
+          body: rows,
+          styles: { fontSize: 9, halign:'right' },
+          columnStyles: { 0:{halign:'left'}, 1:{halign:'left'} }
+        });
+      }
+    }
+    const { imp, iva, tot } = collectFlat(c);
+    let y = detail && doc.lastAutoTable ? (doc.lastAutoTable.finalY || 190) + 20 : 200;
+    doc.setFontSize(12);
+    doc.text(`Imponibile: ${EURO(imp)}`, 40, y); y+=18;
+    doc.text(`IVA (22%): ${EURO(iva)}`, 40, y); y+=18;
+    doc.text(`TOTALE: ${EURO(tot)}`, 40, y);
+
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    const ifr = $('#pdfFrame'); if (ifr) ifr.src = url;
+
+    // Anteprima JPG canvas sotto al PDF
+    const modalBody = document.querySelector('#pdfModal .modal-body');
+    if (modalBody && !document.getElementById('pdfJPGPreview')){
+      const img = document.createElement('img');
+      img.id = 'pdfJPGPreview'; img.alt = 'Anteprima JPG';
+      img.style.display='block'; img.style.maxWidth='100%'; img.style.marginTop='12px';
+      modalBody.appendChild(img);
+    }
+    const jpgDataUrl = await makeJPGPreviewCanvas(detail);
+    const imgEl = document.getElementById('pdfJPGPreview'); if (imgEl) imgEl.src = jpgDataUrl;
+
+    const a = document.getElementById('btnDownload'); if (a) { a.href = url; a.download = `${c.id}.pdf`; }
+    const aJPG = document.getElementById('btnJPG'); if (aJPG) { aJPG.href = jpgDataUrl; aJPG.download = `${c.id}.jpg`; }
+
+    const modalEl = document.getElementById('pdfModal'); if (modalEl) {
+      try { new bootstrap.Modal(modalEl).show(); } catch { modalEl.style.display='block'; }
+    }
+  }
+  async function makeJPGPreviewCanvas(detail){
+    const c = initCur();
+    const { imp, iva, tot } = collectFlat(c);
+    const W = 794, H = 1123;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText(`Preventivo ${c.id}`, 40, 40);
+    ctx.font = '14px Arial';
+    ctx.fillText(`Cliente: ${c.cliente||''}`, 40, 80);
+    ctx.fillText(`Articolo: ${c.articolo||''}`, 40, 100);
+    ctx.fillText(`DDT: ${c.ddt||''}`, 40, 120);
+    ctx.fillText(`Data invio: ${DTIT(c.dataInvio)||''}`, 40, 140);
+    ctx.fillText(`Accettazione: ${DTIT(c.dataAcc)||''}`, 40, 160);
+    ctx.fillText(`Scadenza: ${DTIT(c.dataScad)||''}`, 40, 180);
+    ctx.font = '12px Arial';
+    let y = 210;
+    const maxRows = detail ? 12 : 6;
+    const lines = (c.lines||[]).slice(0, maxRows);
+    if (lines.length){
+      ctx.fillText('Righe lavorazione:', 40, y); y+=18;
+      for (const r of lines){
+        const t = `${r.code||''}  ${String(r.desc||'').slice(0,60)}  x${r.qty||0}  €${(+r.price||0).toFixed(2)}`;
+        ctx.fillText(t, 40, y); y+=16;
+      }
+      if ((c.lines||[]).length > maxRows){
+        ctx.fillText(`… altre ${(c.lines.length - maxRows)} righe`, 40, y+4);
+        y += 20;
+      }
+    }
+    y = Math.max(y+10, H-100);
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText(`Imponibile: ${EURO(imp)}`, 40, y); y+=20;
+    ctx.fillText(`IVA 22%: ${EURO(iva)}`, 40, y); y+=20;
+    ctx.fillText(`TOTALE: ${EURO(tot)}`, 40, y);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  }
+  function composeEmail(){
+    const c = initCur();
+    const { imp, iva, tot } = collectFlat(c);
+    const to = (c.email||'').trim();
+    const subject = encodeURIComponent(`Preventivo ${c.id} - ${c.cliente||''}`);
+    const body = encodeURIComponent(
+`Gentile ${c.cliente||''},
+
+in allegato il preventivo ${c.id}.
+Riepilogo:
+- Articolo: ${c.articolo||''}
+- Imponibile: ${EURO(imp)}
+- IVA (22%): ${EURO(iva)}
+- Totale: ${EURO(tot)}
+
+Restiamo a disposizione.
+Cordiali saluti`);
+    const href = `mailto:${to}?subject=${subject}&body=${body}`;
+    window.location.assign(href);
+  }
+  function composeWhatsApp(){
+    const c = initCur();
+    const { imp, tot } = collectFlat(c);
+    const msg = encodeURIComponent(
+`Preventivo ${c.id}
+Cliente: ${c.cliente||''}
+Articolo: ${c.articolo||''}
+Imponibile: ${EURO(imp)}
+Totale: ${EURO(tot)}`);
+    const raw = (c.telefono||'').replace(/\D+/g,'');
+    const link = raw ? `https://wa.me/${raw}?text=${msg}` : `https://wa.me/?text=${msg}`;
+    window.open(link, '_blank', 'noopener');
   }
 
-  /* ====== Helpers ====== */
+  // ===== Helpers UI =====
+  function fillForm(){
+    const c = initCur();
+    const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
+    ids.forEach(id => { const el = $('#'+id); if (el) el.value = c[id] || ''; });
+    const q = $('#quoteId'); if (q) q.textContent = c.id;
+    updateAccPill(); updateProgress(); recalcTotals();
+  }
+  function snapshotFormToCur(){
+    const c = initCur();
+    c.cliente   = ($('#cliente')?.value || '').trim();
+    c.articolo  = ($('#articolo')?.value || '').trim();
+    c.ddt       = ($('#ddt')?.value || '').trim();
+    c.telefono  = ($('#telefono')?.value || '').trim();
+    c.email     = ($('#email')?.value || '').trim();
+    c.dataInvio = ($('#dataInvio')?.value || '').trim();
+    c.dataAcc   = ($('#dataAcc')?.value || '').trim();
+    c.dataScad  = ($('#dataScad')?.value || '').trim();
+    c.note      = ($('#note')?.value || '');
+    setCurLight(c);
+    return c;
+  }
   function clearEditorToNew(){
     const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
     setCurLight(fresh);
-    window.__elipPhotosQueue = [];
-    $('#imgInput') && ($('#imgInput').value = '');
-    $('#imgPreview') && ($('#imgPreview').innerHTML = '');
+    photoItems = photoItems.filter(x=>x.origin==='server');
+    renderPhotoArea();
+    const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
+    ids.forEach(id => { const el = $('#'+id); if (el) el.value = ''; });
     fillForm(); renderLines();
   }
 
-  /* ====== Bind & Init ====== */
+  function toastSaved(){
+    const t = document.getElementById('toastSave');
+    if (!t) return;
+    try { new bootstrap.Toast(t).show(); } catch { t.style.display='block'; }
+  }
+  function savedModal(){
+    const wrapId='savedModal';
+    if (!document.getElementById(wrapId)){
+      const wrap = document.createElement('div');
+      wrap.innerHTML = `
+        <div class="modal fade" id="${wrapId}" tabindex="-1">
+          <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-body text-center">
+                <div class="h5 mb-2">✅ Preventivo salvato</div>
+                <div class="text-muted small">Le modifiche sono state registrate.</div>
+              </div>
+              <div class="modal-footer justify-content-center">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(wrap.firstElementChild);
+    }
+    try { new bootstrap.Modal(document.getElementById(wrapId)).show(); } catch {}
+  }
+
+  // ===== Bind & Init =====
   function bind(){
-    // Pulsanti
-    $('#btnNew')?.addEventListener('click', (e)=>{ e.preventDefault(); clearEditorToNew(); });
+    $('#btnNew')?.addEventListener('click', (e)=>{
+      e.preventDefault();
+      clearEditorToNew();
+      const btn = document.querySelector('[data-bs-target="#tab-editor"]');
+      if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
+    });
     $('#btnClear')?.addEventListener('click', (e)=>{
       e.preventDefault();
       const c = initCur();
       setCurLight({ id:c.id, createdAt:c.createdAt, cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] });
-      window.__elipPhotosQueue = [];
-      $('#imgInput') && ($('#imgInput').value = '');
-      $('#imgPreview') && ($('#imgPreview').innerHTML = '');
+      photoItems = photoItems.filter(x=>x.origin!=='local'); renderPhotoArea();
       fillForm(); renderLines();
+      const btn = document.querySelector('[data-bs-target="#tab-editor"]');
+      if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
     });
     $('#btnSave')?.addEventListener('click', async (e)=>{
       e.preventDefault();
       snapshotFormToCur();
-      const ok = await (window.dbApi?.saveToSupabase ? window.dbApi.saveToSupabase(false) : Promise.resolve(false));
-      if (ok) clearEditorToNew();
+      const ok = await (window.dbApi?.saveToSupabase ? window.dbApi.saveToSupabase(true) : Promise.resolve(false));
+      if (ok) {
+        toastSaved(); savedModal();
+        try { await window.dbApi.loadArchiveRetry?.(); } catch {}
+        window.renderArchiveLocal?.();
+        // passa ad Archivio e pulisci editor
+        const t = document.querySelector('[data-bs-target="#tab-archivio"]');
+        if (t) { try { new bootstrap.Tab(t).show(); } catch { t.click(); } }
+        clearEditorToNew();
+      }
     });
 
-    // Catalogo
-    $('#catalogSearch')?.addEventListener('input', e => renderCatalog(e.target.value));
-    $('#btnAddCustom')?.addEventListener('click', ()=> addLine({code:'',desc:'',qty:1,price:0,done:false,doneBy:'',doneDate:''}));
-    $('#btnEditCatalog')?.addEventListener('click', editCatalog);
+    $('#btnPDFDett')?.addEventListener('click', ()=> makePDF(true));
+    $('#btnPDFTot')?.addEventListener('click', ()=> makePDF(false));
+    $('#btnMail')?.addEventListener('click', composeEmail);
+    $('#btnWA')?.addEventListener('click', composeWhatsApp);
 
-    // Archivio
+    $('#imgInput')?.addEventListener('change', async e => {
+      try { await addLocalFiles(e.target.files); } catch (err) { console.error('[imgInput]', err); }
+    });
+
+    $('#catalogSearch')?.addEventListener('input', e => renderCatalog(e.target.value));
+
     $('#filterQuery')?.addEventListener('input', renderArchiveTable);
     $('#fltAll')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltAll').classList.add('active'); $('#fltOk')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
     $('#fltOk')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltOk').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
@@ -388,39 +606,42 @@
       if (b){ openFromArchive(b.getAttribute('data-open-num')); }
     });
 
-    // Pill accettazione
+    $('#imgPreview')?.addEventListener('click', (e)=>{
+      const btn = e.target.closest('button[data-remove-id]');
+      if (btn){
+        const id = btn.getAttribute('data-remove-id');
+        const i = photoItems.findIndex(x=>x.id===id);
+        if (i>=0){ 
+          const it = photoItems[i];
+          if (it.origin==='local'){ photoItems.splice(i,1); renderPhotoArea(); }
+        }
+        return;
+      }
+      const img = e.target.closest('img');
+      const modal = document.getElementById('imgModal');
+      const target = document.getElementById('imgModalImg');
+      if (img && img.dataset.full && target){
+        target.src = img.dataset.full;
+        if (modal) { try { new bootstrap.Modal(modal).show(); } catch { modal.style.display='block'; } }
+      }
+    });
+
     $('#dataAcc')?.addEventListener('input', updateAccPill);
     $('#dataAcc')?.addEventListener('change', updateAccPill);
   }
 
-  function addLine(r){
-    const c = initCur();
-    c.lines.push(r);
-    setCurLight(c);
-    renderLines();
-    recalcTotals();
-  }
-
   async function init(){
-    ensureCatalog();
-    buildDatalist();
-    renderCatalog('');
-    fillForm();
-    renderLines();
-    // Carica archivio da DB (se disponibile)
     try {
-      if (window.dbApi?.loadArchive) {
-        await window.dbApi.loadArchive();
-      } else {
-        console.warn('[init] dbApi non disponibile (app-supabase.js non caricato?)');
-      }
-    } catch(e){ console.warn('[loadArchive] errore', e); }
-    renderArchiveTable();
-    try {
-      if (window.dbApi?.subscribeRealtime) window.dbApi.subscribeRealtime();
-    } catch(e){ console.warn('[realtime] errore', e); }
-    bind();
+      ensureCatalog();
+      buildDatalist();
+      renderCatalog('');
+      initCur();
+      fillForm();
+      renderLines();
+      if (window.dbApi?.loadArchive) await window.dbApi.loadArchive();
+      renderArchiveTable();
+    } catch (e) { console.error('[init failed]', e); }
   }
 
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', ()=>{ bind(); init(); });
 })();
