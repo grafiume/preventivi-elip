@@ -1,4 +1,5 @@
-/* Preventivi ELIP — app-supabase.js (compatibilità tipi + retry linee) */
+
+/* Preventivi ELIP — app-supabase.js (2025-10-23, return boolean on save) */
 (function(){
   'use strict';
 
@@ -19,7 +20,7 @@
       catch (e){
         last = e;
         const code = Number(e?.status || e?.code || 0);
-        if (code===429 || code>=500) { await sleep(base*Math.pow(2,i)); continue; }
+        if (code===429 || code>=500) { await sleep(base*(2**i)); continue; }
         break;
       }
     }
@@ -39,7 +40,7 @@
     const imponibile = (cur.lines || []).reduce((s,r)=> s + (+(r.qty||0))*(+(r.price||0)), 0);
     const totale = +(imponibile*1.22).toFixed(2);
     return {
-      numero: ntext(cur.id),                // mappato su 'numero'
+      numero: ntext(cur.id),
       cliente: ntext(cur.cliente),
       articolo: ntext(cur.articolo),
       ddt: ntext(cur.ddt),
@@ -49,45 +50,25 @@
       data_accettazione: ndate(cur.dataAcc),
       data_scadenza: ndate(cur.dataScad),
       note: ntext(cur.note),
-      linee: nz(cur.lines || []),           // verrà adattato più sotto
+      linee: nz(cur.lines || []),           // gestita nativamente come jsonb
       imponibile: nnumber(imponibile),
       totale: nnumber(totale)
     };
   }
 
-  // Prova salvataggio con 'linee' come JSON o come stringa in fallback
   async function saveCompat(table, payload, where){
     const c = supa();
-
-    // 1) tenta come JSON (array/obj)
-    let attempt = 'json';
-    try {
-      let q = c.from(table);
-      if (where?.id) q = q.update(payload).eq('id', where.id).select().single();
-      else q = q.insert(payload).select().single();
-      const { data, error } = await q;
-      if (error) throw error;
-      return { data };
-    } catch (e1) {
-      const msg = (e1?.message||'').toLowerCase();
-      const badJson = (e1?.status===400) && (msg.includes('json') || msg.includes('invalid input'));
-      if (!badJson) throw e1;
-      attempt = 'text';
-
-      // 2) ritenta con linee come stringa
-      const payload2 = { ...payload, linee: JSON.stringify(payload.linee ?? []) };
-      let q2 = c.from(table);
-      if (where?.id) q2 = q2.update(payload2).eq('id', where.id).select().single();
-      else q2 = q2.insert(payload2).select().single();
-      const { data, error } = await q2;
-      if (error) throw error;
-      return { data, coerced: attempt };
-    }
+    // prova unica: assumiamo 'linee' jsonb (schema allineato)
+    let q = c.from(table);
+    if (where?.id) q = q.update(payload).eq('id', where.id).select().single();
+    else q = q.insert(payload).select().single();
+    const { data, error } = await q;
+    if (error) throw error;
+    return { data };
   }
 
   async function upsertPreventivoByNumero(payload){
     const c = supa();
-    // cerca per numero
     const { data: found, error: selErr } = await c.from('preventivi').select('id').eq('numero', payload.numero).maybeSingle();
     if (selErr && selErr.code !== 'PGRST116') return { error: selErr };
 
@@ -156,16 +137,15 @@
 
   async function saveToSupabase(archiveAfter){
     const cur = (() => { try { return JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch { return null; } })();
-    if (!cur) { alert('Nessun preventivo in memoria.'); return; }
+    if (!cur) { alert('Nessun preventivo in memoria.'); return false; }
 
     const payload = buildPayload(cur);
     const { error } = await upsertPreventivoByNumero(payload);
     if (error) {
-      // Mostra messaggio dettagliato e suggerimenti
       const msg = error?.message || JSON.stringify(error);
-      console.error('[saveToSupabase] 400 payload:', payload, 'error:', error);
-      alert('Errore salvataggio (400): ' + msg + '\nControlla che i tipi delle colonne corrispondano.\n- Se la colonna "linee" è text, verrà salvata come stringa.\n- Se è json/jsonb, viene salvata come JSON.');
-      return;
+      console.error('[saveToSupabase] payload:', payload, 'error:', error);
+      alert('Errore salvataggio: ' + msg);
+      return false;
     }
 
     // Upload foto (best-effort)
@@ -178,10 +158,12 @@
     await loadArchive();
     if (typeof window.toastSaved === 'function') window.toastSaved();
 
-    // resta sull'editor (come richiesto) o vai in Archivio se serve
+    // resta sull'editor
     const btn = document.querySelector('[data-bs-target="#tab-editor"]');
     if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
     if (archiveAfter) { const t = document.querySelector('[data-bs-target="#tab-archivio"]'); t && t.click(); }
+
+    return true; // <<< SUCCESS
   }
 
   window.dbApi = { supa, uploadPhoto, loadArchive, subscribeRealtime, saveToSupabase };

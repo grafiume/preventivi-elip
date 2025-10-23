@@ -1,4 +1,5 @@
-/* Preventivi ELIP — app.js (2025-10-23, snapshot+Archivio imponibile + pill OK/NO + catalogo + stato righe) */
+
+/* Preventivi ELIP — app.js (2025-10-23, clear after save + small UI tweaks) */
 (function(){
   'use strict';
 
@@ -7,7 +8,7 @@
   const EURO = n => (n||0).toLocaleString('it-IT', { style:'currency', currency:'EUR' });
   const DTIT = s => s ? new Date(s).toLocaleDateString('it-IT') : '';
 
-  /* ====================== Catalogo voci ====================== */
+  /* Catalogo minimo (invariato) */
   const DEFAULT_CATALOG=[
     {code:"05",desc:"Smontaggio completo del motore sistematico"},
     {code:"29",desc:"Lavaggio componenti e trattamento termico avvolgimenti"},
@@ -44,7 +45,6 @@
     }
   }
   function getCatalog(){ try { return JSON.parse(localStorage.getItem('elip_catalog')||'[]'); } catch { return []; } }
-  function setCatalog(rows){ localStorage.setItem('elip_catalog', JSON.stringify(rows||[])); }
   function buildDatalist(){
     let dl = $('#catalogCodes');
     if (!dl) { dl = document.createElement('datalist'); dl.id = 'catalogCodes'; document.body.appendChild(dl); }
@@ -56,35 +56,9 @@
       dl.appendChild(o);
     });
   }
-  function renderCatalog(filter=''){
-    const ul = $('#catalogList'); if (!ul) return;
-    const q = (filter||'').toLowerCase();
-    const rows = getCatalog().filter(x => (x.code+' '+x.desc).toLowerCase().includes(q));
-    ul.innerHTML = '';
-    if (rows.length===0) { ul.innerHTML = '<li class="list-group-item text-muted">Nessuna voce…</li>'; return; }
-    rows.forEach(x => {
-      const li = document.createElement('li');
-      li.className = 'list-group-item';
-      li.textContent = `${x.code} - ${x.desc}`;
-      li.addEventListener('click',()=> addLine({code:x.code,desc:x.desc,qty:1,price:0,done:false,doneBy:'',doneDate:''}));
-      ul.appendChild(li);
-    });
-  }
-  function editCatalog(){
-    const cur = JSON.stringify(getCatalog(), null, 2);
-    const next = prompt('Modifica catalogo (JSON):', cur);
-    if (!next) return;
-    try {
-      const parsed = JSON.parse(next);
-      if (!Array.isArray(parsed)) throw new Error('Deve essere un array');
-      setCatalog(parsed);
-      buildDatalist();
-      renderCatalog($('#catalogSearch')?.value||'');
-    } catch(e){ alert('JSON non valido: ' + e.message); }
-  }
 
-  /* ====================== Stato corrente (no immagini in LS) ====================== */
-  window.__elipPhotosQueue = []; // solo in memoria
+  /* Stato corrente */
+  window.__elipPhotosQueue = [];
   function getCur(){ try { return JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch { return null; } }
   function setCurLight(o){
     try {
@@ -92,10 +66,7 @@
       const { images, img, photoData, previewData, ...rest } = o;
       if (typeof rest.note === 'string' && rest.note.length > 4000) rest.note = rest.note.slice(0,4000);
       localStorage.setItem('elip_current', JSON.stringify(rest));
-    } catch (e) {
-      console.warn('[setCurLight] skip', e?.name||e);
-      try { localStorage.removeItem('elip_current'); } catch {}
-    }
+    } catch { try{ localStorage.removeItem('elip_current'); }catch{} }
   }
   function nextNumero(){
     const y = new Date().getFullYear();
@@ -113,7 +84,6 @@
     return cur;
   }
 
-  /* ====================== Editor ====================== */
   function fillForm(){
     const c = initCur();
     ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id => { const el = $('#'+id); if (el) el.value = c[id] || ''; });
@@ -122,6 +92,7 @@
     updateProgress();
     recalcTotals();
   }
+
   function renderLines(){
     const c = initCur();
     const body = $('#linesBody'); if (!body) return;
@@ -147,14 +118,7 @@
     body.onclick = onLineClick;
     recalcTotals();
   }
-  function addLine(r){
-    const c = initCur();
-    c.lines.push(r);
-    setCurLight(c);
-    renderLines();
-    recalcTotals();
-  }
-  function addCustomLine(){ addLine({code:'',desc:'',qty:1,price:0,done:false,doneBy:'',doneDate:''}); }
+
   function onLineEdit(e){
     const c = initCur();
     const i = e.target.dataset.idx;
@@ -174,7 +138,7 @@
     if (e.target.classList.contains('line-operator')) c.lines[i].doneBy = e.target.value;
     if (e.target.classList.contains('line-date')) c.lines[i].doneDate = e.target.value;
     setCurLight(c);
-    renderLines();     // aggiorna badge stato riga
+    renderLines();
     recalcTotals();
   }
   function onLineClick(e){
@@ -188,7 +152,6 @@
     }
   }
 
-  /* ====================== Snapshot form (prima di SALVA) ====================== */
   function snapshotFormToCur(){
     const c = initCur();
     c.cliente   = ($('#cliente')?.value || '').trim();
@@ -204,7 +167,6 @@
     return c;
   }
 
-  /* ====================== Stato accettazione (pill) ====================== */
   function updateAccPill(){
     const has = ($('#dataAcc')?.value || '').trim().length > 0;
     const pill = $('#okPill');
@@ -214,7 +176,6 @@
     pill.classList.toggle('acc-no', !has);
   }
 
-  /* ====================== Progress & Totali ====================== */
   function updateProgress(){
     const c = initCur();
     let toDo=0, done=0;
@@ -246,7 +207,6 @@
     updateAccPill();
   }
 
-  /* ====================== Foto ====================== */
   function renderImages(){
     const wrap = $('#imgPreview'); if (!wrap) return;
     wrap.innerHTML = '';
@@ -263,7 +223,7 @@
     };
   }
 
-  /* ====================== Archivio ====================== */
+  /* Archivio */
   function computeAccCounters(arr){
     let ok=0,no=0;
     (arr||[]).forEach(r => ((r.data_accettazione||'').toString().trim()? ok++ : no++));
@@ -330,26 +290,26 @@
     if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
   }
 
-  /* ====================== Toast + Hooks ====================== */
+  /* Helpers */
+  function clearEditorToNew(){
+    const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
+    setCurLight(fresh);
+    window.__elipPhotosQueue = [];
+    $('#imgInput') && ($('#imgInput').value = '');
+    $('#imgPreview') && ($('#imgPreview').innerHTML = '');
+    fillForm(); renderLines(); renderImages();
+  }
+
+  /* Toast + Hooks */
   window.toastSaved = function(){
     const el = $('#toastSave'); if (!el) return;
     try { new bootstrap.Toast(el).show(); } catch {}
   };
   window.renderArchiveLocal = function(){ renderArchiveTable(); };
 
-  /* ====================== Bind eventi ====================== */
+  /* Bind eventi */
   function bind(){
-    // Nuovo
-    $('#btnNew')?.addEventListener('click', (e)=>{
-      e.preventDefault();
-      const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
-      setCurLight(fresh);
-      window.__elipPhotosQueue = [];
-      $('#imgInput') && ($('#imgInput').value = '');
-      $('#imgPreview') && ($('#imgPreview').innerHTML = '');
-      fillForm(); renderLines(); renderImages();
-    });
-    // Pulisci
+    $('#btnNew')?.addEventListener('click', (e)=>{ e.preventDefault(); clearEditorToNew(); });
     $('#btnClear')?.addEventListener('click', (e)=>{
       e.preventDefault();
       const c = initCur();
@@ -359,42 +319,70 @@
       $('#imgPreview') && ($('#imgPreview').innerHTML = '');
       fillForm(); renderLines(); renderImages();
     });
-    // Salva
     $('#btnSave')?.addEventListener('click', async (e)=>{
       e.preventDefault();
-      snapshotFormToCur();              // << sync prima del salvataggio
-      try { await window.dbApi.saveToSupabase(false); } 
-      catch(err){ alert('Errore salvataggio: ' + (err?.message||err)); }
+      snapshotFormToCur();
+      const ok = await window.dbApi.saveToSupabase(false);
+      if (ok) {
+        // Dopo salvataggio: pulisci tutti i campi (nuovo numero)
+        clearEditorToNew();
+      }
     });
-    // Foto
     $('#imgInput')?.addEventListener('change', e => { window.__elipPhotosQueue = Array.from(e.target.files||[]); renderImages(); });
-
-    // Catalogo
     $('#catalogSearch')?.addEventListener('input', e => renderCatalog(e.target.value));
-    $('#btnAddCustom')?.addEventListener('click', addCustomLine);
-    $('#btnEditCatalog')?.addEventListener('click', editCatalog);
-
-    // Archivio
+    $('#btnAddCustom')?.addEventListener('click', ()=>{
+      const c = initCur();
+      c.lines.push({code:'',desc:'',qty:1,price:0,done:false,doneBy:'',doneDate:''});
+      setCurLight(c); renderLines(); recalcTotals();
+    });
+    $('#btnEditCatalog')?.addEventListener('click', ()=>{
+      const cur = JSON.stringify(getCatalog(), null, 2);
+      const next = prompt('Modifica catalogo (JSON):', cur);
+      if (!next) return;
+      try {
+        const parsed = JSON.parse(next);
+        if (!Array.isArray(parsed)) throw new Error('Deve essere un array');
+        localStorage.setItem('elip_catalog', JSON.stringify(parsed||[]));
+        buildDatalist(); renderCatalog($('#catalogSearch')?.value||'');
+      } catch(e){ alert('JSON non valido: ' + e.message); }
+    });
     $('#filterQuery')?.addEventListener('input', renderArchiveTable);
     $('#fltAll')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltAll').classList.add('active'); $('#fltOk')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
     $('#fltOk')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltOk').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
     $('#fltNo')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltNo').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltOk')?.classList.remove('active'); renderArchiveTable(); });
-
     $('#archBody')?.addEventListener('click', (e)=>{
       const b = e.target.closest('button[data-open-num]');
       if (b){ openFromArchive(b.getAttribute('data-open-num')); }
     });
-
-    // Pill accettazione
     $('#dataAcc')?.addEventListener('input', updateAccPill);
     $('#dataAcc')?.addEventListener('change', updateAccPill);
   }
 
-  /* ====================== Init ====================== */
+  function renderCatalog(q=''){ /* no-op placeholder until ensure */ }
   document.addEventListener('DOMContentLoaded', async () => {
     ensureCatalog();
     buildDatalist();
+    // render catalog list from ensureCatalog
+    (renderCatalog = function(filter=''){
+      const ul = $('#catalogList'); if (!ul) return;
+      const q = (filter||'').toLowerCase();
+      const rows = getCatalog().filter(x => (x.code+' '+x.desc).toLowerCase().includes(q));
+      ul.innerHTML = '';
+      if (rows.length===0) { ul.innerHTML = '<li class="list-group-item text-muted">Nessuna voce…</li>'; return; }
+      rows.forEach(x => {
+        const li = document.createElement('li');
+        li.className = 'list-group-item';
+        li.textContent = `${x.code} - ${x.desc}`;
+        li.addEventListener('click',()=>{
+          const c = initCur();
+          c.lines.push({code:x.code,desc:x.desc,qty:1,price:0,done:false,doneBy:'',doneDate:''});
+          setCurLight(c); renderLines(); recalcTotals();
+        });
+        ul.appendChild(li);
+      });
+    });
     renderCatalog('');
+
     fillForm();
     renderLines();
     renderImages();

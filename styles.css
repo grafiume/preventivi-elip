@@ -1,4 +1,8 @@
-/* Preventivi ELIP — styles.css additions (2025-10-23) */
+
+/* Preventivi ELIP — styles.css tweaks (2025-10-23) */
+
+/* Logo più piccolo */
+.brand{ height:28px; width:auto; display:block; }
 
 /* Pill accettazione */
 .acc-pill{ font-weight:600; }
