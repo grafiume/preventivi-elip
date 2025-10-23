@@ -1,4 +1,5 @@
-/* Preventivi ELIP — app.js (2025-10-23, Catalogo ripristinato + Archivio + Foto in memoria) */
+
+/* Preventivi ELIP — app.js (2025-10-23, Stato lavorazione fix: pill + badge per riga) */
 (function(){
   'use strict';
 
@@ -7,7 +8,7 @@
   const EURO = n => (n||0).toLocaleString('it-IT', { style:'currency', currency:'EUR' });
   const DTIT = s => s ? new Date(s).toLocaleDateString('it-IT') : '';
 
-  // ---------------- Catalogo Voci (ripristino completo) ----------------
+  // ---------------- Catalogo Voci ----------------
   const DEFAULT_CATALOG=[
     {code:"05",desc:"Smontaggio completo del motore sistematico"},
     {code:"29",desc:"Lavaggio componenti e trattamento termico avvolgimenti"},
@@ -45,7 +46,6 @@
   }
   function getCatalog(){ try { return JSON.parse(localStorage.getItem('elip_catalog')||'[]'); } catch { return []; } }
   function setCatalog(rows){ localStorage.setItem('elip_catalog', JSON.stringify(rows||[])); }
-
   function buildDatalist(){
     let dl = $('#catalogCodes');
     if (!dl) { dl = document.createElement('datalist'); dl.id = 'catalogCodes'; document.body.appendChild(dl); }
@@ -86,7 +86,6 @@
 
   // ---------------- Stato corrente (NO immagini in LS) ----------------
   window.__elipPhotosQueue = []; // solo in memoria
-
   function getCur(){ try { return JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch { return null; } }
   function setCurLight(o){
     try {
@@ -120,13 +119,18 @@
     const c = initCur();
     ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id => { const el = $('#'+id); if (el) el.value = c[id] || ''; });
     const q = $('#quoteId'); if (q) q.textContent = c.id;
-    updateProgress(); recalcTotals();
+    updateAccPill();
+    updateProgress();
+    recalcTotals();
   }
   function renderLines(){
     const c = initCur();
     const body = $('#linesBody'); if (!body) return;
     body.innerHTML = '';
     (c.lines||[]).forEach((r,i) => {
+      const statoBadge = r.doneDate && String(r.doneDate).trim()
+        ? '<span class="badge text-bg-success">OK</span>'
+        : '<span class="badge text-bg-danger">NO</span>';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><input class="form-control form-control-sm line-code" list="catalogCodes" data-idx="${i}" placeholder="Cod." value="${r.code||''}"></td>
@@ -134,7 +138,7 @@
         <td><input type="number" min="0" step="1" class="form-control form-control-sm text-end line-qty" data-idx="${i}" value="${r.qty||1}"></td>
         <td><input type="number" min="0" step="0.01" class="form-control form-control-sm text-end line-price" data-idx="${i}" value="${r.price||0}"></td>
         <td class="text-end" id="lineTot${i}">€ 0,00</td>
-        <td class="text-center"><span class="badge bg-secondary">—</span></td>
+        <td class="text-center">${statoBadge}</td>
         <td><input class="form-control form-control-sm line-operator" data-idx="${i}" value="${r.doneBy||''}"></td>
         <td><input type="date" class="form-control form-control-sm line-date" data-idx="${i}" value="${r.doneDate||''}"></td>
         <td><button class="btn btn-sm btn-outline-danger" data-del="${i}">✕</button></td>`;
@@ -171,6 +175,7 @@
     if (e.target.classList.contains('line-operator')) c.lines[i].doneBy = e.target.value;
     if (e.target.classList.contains('line-date')) c.lines[i].doneDate = e.target.value;
     setCurLight(c);
+    renderLines();     // re-render to update the status badge color
     recalcTotals();
   }
   function onLineClick(e){
@@ -184,6 +189,23 @@
     }
   }
 
+  // ---------------- Stato accettazione (pill verde/rosso) ----------------
+  function updateAccPill(){
+    const val = ($('#dataAcc')?.value || '').trim();
+    const pill = $('#okPill');
+    if (!pill) return;
+    const yes = !!val;
+    pill.textContent = yes ? '● OK' : '● NO';
+    pill.classList.toggle('acc-yes', yes);
+    pill.classList.toggle('acc-no', !yes);
+    // fallback inline style se le classi non esistono in CSS
+    if (!pill.classList.contains('acc-yes') && !pill.classList.contains('acc-no')) {
+      pill.style.color = yes ? '#198754' : '#dc3545'; // verde / rosso Bootstrap
+      pill.style.fontWeight = '600';
+    }
+  }
+
+  // ---------------- Totali & Avanzamento ----------------
   function updateProgress(){
     const c = initCur();
     let toDo=0, done=0;
@@ -212,9 +234,10 @@
     $('#totale') && ($('#totale').textContent = EURO(tot));
     setCurLight(c);
     updateProgress();
+    updateAccPill();
   }
 
-  // ---------------- Foto (anteprima via ObjectURL, niente base64) ----------------
+  // ---------------- Foto ----------------
   function renderImages(){
     const wrap = $('#imgPreview'); if (!wrap) return;
     wrap.innerHTML = '';
@@ -231,7 +254,7 @@
     };
   }
 
-  // ---------------- Archivio (tabella + filtri + apri) ----------------
+  // ---------------- Archivio ----------------
   function computeAccCounters(arr){
     let ok=0,no=0;
     (arr||[]).forEach(r => ((r.data_accettazione||'').toString().trim()? ok++ : no++));
@@ -304,7 +327,7 @@
     try { new bootstrap.Toast(el).show(); } catch {}
   };
 
-  // ---------------- Hooks chiamati da app-supabase.js ----------------
+  // ---------------- Hooks da app-supabase.js ----------------
   window.renderArchiveLocal = function(){ renderArchiveTable(); };
 
   // ---------------- Bind eventi ----------------
@@ -352,6 +375,10 @@
       const b = e.target.closest('button[data-open-num]');
       if (b){ openFromArchive(b.getAttribute('data-open-num')); }
     });
+
+    // Pill accettazione in tempo reale
+    $('#dataAcc')?.addEventListener('input', ()=>{ updateAccPill(); });
+    $('#dataAcc')?.addEventListener('change', ()=>{ updateAccPill(); });
   }
 
   // ---------------- Init ----------------
