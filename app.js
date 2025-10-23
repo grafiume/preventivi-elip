@@ -1,5 +1,4 @@
-
-/* Preventivi ELIP — app.js (2025-10-23, Archivio: percentuale avanzamento + badge "Chiusa") */
+/* Preventivi ELIP — app.js (2025-10-23, Archivio: % avanzamento + Chiusa + stato accettazione; fix openFromArchive) */
 (function(){
   'use strict';
 
@@ -8,7 +7,7 @@
   const EURO = n => (n||0).toLocaleString('it-IT', { style:'currency', currency:'EUR' });
   const DTIT = s => s ? new Date(s).toLocaleDateString('it-IT') : '';
 
-  /* ====== Catalogo (come già in uso) ====== */
+  /* ====== Catalogo ====== */
   const DEFAULT_CATALOG=[
     {code:"05",desc:"Smontaggio completo del motore sistematico"},
     {code:"29",desc:"Lavaggio componenti e trattamento termico avvolgimenti"},
@@ -94,7 +93,7 @@
     pill.classList.toggle('acc-no', !has);
   }
 
-  /* ====== Progress & Totali ====== */
+  /* ====== Progress & Totali (Editor) ====== */
   function updateProgress(){
     const c = initCur();
     let toDo=0, done=0;
@@ -201,7 +200,7 @@
     return c;
   }
 
-  /* ====== Archivio: progress percent + badge Chiusa ====== */
+  /* ====== Archivio: progress percent + Chiusa + stato accettazione ====== */
   function coerceArray(a){
     if (!a) return [];
     if (Array.isArray(a)) return a;
@@ -239,6 +238,33 @@
     if (q && !(hitTxt(r.cliente)||hitTxt(r.articolo)||hitTxt(r.numero)||hitTxt(r.ddt))) return false;
     return true;
   }
+
+  function openFromArchive(num){
+    let arr = [];
+    try { arr = JSON.parse(localStorage.getItem('elip_archive') || '[]') || []; } catch {}
+    const r = arr.find(x => x.numero === num);
+    if (!r) return;
+    const cur = {
+      id: r.numero || nextNumero(),
+      createdAt: r.created_at || new Date().toISOString(),
+      cliente: r.cliente || '',
+      articolo: r.articolo || '',
+      ddt: r.ddt || '',
+      telefono: r.telefono || '',
+      email: r.email || '',
+      dataInvio: r.data_invio || '',
+      dataAcc: r.data_accettazione || '',
+      dataScad: r.data_scadenza || '',
+      note: r.note || '',
+      lines: r.linee || []
+    };
+    setCurLight(cur);
+    fillForm();
+    renderLines();
+    const btn = document.querySelector('[data-bs-target="#tab-editor"]');
+    if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
+  }
+
   function renderArchiveTable(){
     let arr = [];
     try { arr = JSON.parse(localStorage.getItem('elip_archive') || '[]') || []; } catch {}
@@ -251,9 +277,14 @@
     tbody.innerHTML = '';
     rows.forEach(r => {
       const pct = progressPctFromLines(r.linee);
+      const isAccepted = !!(r.data_accettazione);
+      const accBadge = isAccepted
+        ? '<span class="badge text-bg-success ms-2">Accettata</span>';
+        : '<span class="badge text-bg-danger ms-2">Non accettata</span>';
+
       const statoHtml = (pct === 100)
         ? `<span class="badge text-bg-primary">Chiusa</span> <span class="small text-muted ms-1">${pct}%</span>`
-        : `<span class="badge text-bg-secondary">${pct}%</span>`;
+        : `<span class="badge text-bg-secondary">${pct}%</span>${accBadge}`;
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
@@ -300,8 +331,15 @@
       if (ok) clearEditorToNew();
     });
 
-    $('#imgInput')?.addEventListener('change', e => { window.__elipPhotosQueue = Array.from(e.target.files||[]); });
+    $('#archBody')?.addEventListener('click', (e)=>{
+      const b = e.target.closest('button[data-open-num]');
+      if (b){ openFromArchive(b.getAttribute('data-open-num')); }
+    });
 
+    $('#dataAcc')?.addEventListener('input', updateAccPill);
+    $('#dataAcc')?.addEventListener('change', updateAccPill);
+
+    // Catalogo quick search
     $('#catalogSearch')?.addEventListener('input', e => {
       const ul = $('#catalogList'); if (!ul) return;
       const q = (e.target.value||'').toLowerCase();
@@ -320,46 +358,12 @@
         ul.appendChild(li);
       });
     });
-    $('#btnAddCustom')?.addEventListener('click', ()=>{
-      const c = initCur();
-      c.lines.push({code:'',desc:'',qty:1,price:0,done:false,doneBy:'',doneDate:''});
-      setCurLight(c); renderLines(); recalcTotals();
-    });
-    $('#btnEditCatalog')?.addEventListener('click', ()=>{
-      const cur = JSON.stringify(getCatalog(), null, 2);
-      const next = prompt('Modifica catalogo (JSON):', cur);
-      if (!next) return;
-      try {
-        const parsed = JSON.parse(next);
-        if (!Array.isArray(parsed)) throw new Error('Deve essere un array');
-        localStorage.setItem('elip_catalog', JSON.stringify(parsed||[]));
-        $('#catalogSearch') && ($('#catalogSearch').value='');
-        const evt = new Event('input'); $('#catalogSearch')?.dispatchEvent(evt);
-        buildDatalist();
-      } catch(e){ alert('JSON non valido: ' + e.message); }
-    });
 
+    // Filtri archivio
     $('#filterQuery')?.addEventListener('input', renderArchiveTable);
     $('#fltAll')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltAll').classList.add('active'); $('#fltOk')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
     $('#fltOk')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltOk').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
     $('#fltNo')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltNo').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltOk')?.classList.remove('active'); renderArchiveTable(); });
-
-    $('#archBody')?.addEventListener('click', (e)=>{
-      const b = e.target.closest('button[data-open-num]');
-      if (b){ openFromArchive(b.getAttribute('data-open-num')); }
-    });
-
-    $('#dataAcc')?.addEventListener('input', updateAccPill);
-    $('#dataAcc')?.addEventListener('change', updateAccPill);
-  }
-
-  function fillForm(){
-    const c = initCur();
-    ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id => { const el = $('#'+id); if (el) el.value = c[id] || ''; });
-    const q = $('#quoteId'); if (q) q.textContent = c.id;
-    updateAccPill();
-    updateProgress();
-    recalcTotals();
   }
 
   function renderInitialCatalog(){
