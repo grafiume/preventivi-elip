@@ -583,8 +583,25 @@ Totale: ${EURO(tot)}`);
     el.style.color = isWarn ? '#dc3545' : '';
     el.style.fontWeight = isWarn ? '600' : '';
   }
+  
   function updateDeadlineUI(){
     let c = null; try { c = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
+    c = c || {};
+    const pct = getProgressPctFromCur();
+    const dStr = c.dataScad || (document.getElementById('dataScad')?.value || '');
+    const d = parseISODate(dStr);
+    if (!d || pct===100){
+      applyScadenzaInputStyle(false);
+      return;
+    }
+    const today = new Date();
+    const daysLeft = diffDaysUTC(d, today);
+    if (daysLeft < 0 || daysLeft <= 5){
+      applyScadenzaInputStyle(true);
+    } else {
+      applyScadenzaInputStyle(false);
+    }
+  }
     c = c || {};
     const pct = getProgressPctFromCur();
     const dStr = c.dataScad || (document.getElementById('dataScad')?.value || '');
