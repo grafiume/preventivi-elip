@@ -1,4 +1,4 @@
-/* Preventivi ELIP — app.js (2025-10-23, Archivio table + filters + Open) */
+/* Preventivi ELIP — app.js (2025-10-23, Catalogo ripristinato + Archivio + Foto in memoria) */
 (function(){
   'use strict';
 
@@ -7,7 +7,86 @@
   const EURO = n => (n||0).toLocaleString('it-IT', { style:'currency', currency:'EUR' });
   const DTIT = s => s ? new Date(s).toLocaleDateString('it-IT') : '';
 
-  window.__elipPhotosQueue = [];
+  // ---------------- Catalogo Voci (ripristino completo) ----------------
+  const DEFAULT_CATALOG=[
+    {code:"05",desc:"Smontaggio completo del motore sistematico"},
+    {code:"29",desc:"Lavaggio componenti e trattamento termico avvolgimenti"},
+    {code:"06",desc:"Verifiche meccaniche alberi/alloggi cuscinetti + elettriche avvolgimenti"},
+    {code:"07",desc:"Tornitura, smicatura ed equilibratura rotore"},
+    {code:"22",desc:"Sostituzione collettore con recupero avvolgimento"},
+    {code:"01",desc:"Avvolgimento indotto con recupero collettore"},
+    {code:"01C",desc:"Avvolgimento indotto con sostituzione collettore"},
+    {code:"08",desc:"Isolamento statore"},
+    {code:"02",desc:"Avvolgimento statore"},
+    {code:"31",desc:"Lavorazioni meccaniche albero"},
+    {code:"32",desc:"Lavorazioni meccaniche flange"},
+    {code:"19",desc:"Sostituzione spazzole"},
+    {code:"20",desc:"Sostituzione molle premispazzole"},
+    {code:"21",desc:"Sostituzione cuscinetti"},
+    {code:"23",desc:"Sostituzione tenuta meccanica"},
+    {code:"26",desc:"Sostituzione guarnizioni/paraolio"},
+    {code:"30",desc:"Montaggio, collaudo e verniciatura"},
+    {code:"16",desc:"Ricambi vari"}
+  ];
+  function ensureCatalog(){
+    try {
+      const raw = localStorage.getItem('elip_catalog');
+      if (!raw) {
+        localStorage.setItem('elip_catalog', JSON.stringify(DEFAULT_CATALOG));
+      } else {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          localStorage.setItem('elip_catalog', JSON.stringify(DEFAULT_CATALOG));
+        }
+      }
+    } catch {
+      localStorage.setItem('elip_catalog', JSON.stringify(DEFAULT_CATALOG));
+    }
+  }
+  function getCatalog(){ try { return JSON.parse(localStorage.getItem('elip_catalog')||'[]'); } catch { return []; } }
+  function setCatalog(rows){ localStorage.setItem('elip_catalog', JSON.stringify(rows||[])); }
+
+  function buildDatalist(){
+    let dl = $('#catalogCodes');
+    if (!dl) { dl = document.createElement('datalist'); dl.id = 'catalogCodes'; document.body.appendChild(dl); }
+    dl.innerHTML = '';
+    getCatalog().forEach(x=>{
+      const o=document.createElement('option');
+      o.value = x.code;
+      o.label = `${x.code} - ${x.desc}`;
+      dl.appendChild(o);
+    });
+  }
+  function renderCatalog(filter=''){
+    const ul = $('#catalogList'); if (!ul) return;
+    const q = (filter||'').toLowerCase();
+    const rows = getCatalog().filter(x => (x.code+' '+x.desc).toLowerCase().includes(q));
+    ul.innerHTML = '';
+    if (rows.length===0) { ul.innerHTML = '<li class="list-group-item text-muted">Nessuna voce…</li>'; return; }
+    rows.forEach(x => {
+      const li = document.createElement('li');
+      li.className = 'list-group-item';
+      li.textContent = `${x.code} - ${x.desc}`;
+      li.addEventListener('click',()=> addLine({code:x.code,desc:x.desc,qty:1,price:0,done:false,doneBy:'',doneDate:''}));
+      ul.appendChild(li);
+    });
+  }
+  function editCatalog(){
+    const cur = JSON.stringify(getCatalog(), null, 2);
+    const next = prompt('Modifica catalogo (JSON):', cur);
+    if (!next) return;
+    try {
+      const parsed = JSON.parse(next);
+      if (!Array.isArray(parsed)) throw new Error('Deve essere un array');
+      setCatalog(parsed);
+      buildDatalist();
+      renderCatalog($('#catalogSearch')?.value||'');
+    } catch(e){ alert('JSON non valido: ' + e.message); }
+  }
+
+  // ---------------- Stato corrente (NO immagini in LS) ----------------
+  window.__elipPhotosQueue = []; // solo in memoria
+
   function getCur(){ try { return JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch { return null; } }
   function setCurLight(o){
     try {
@@ -16,6 +95,7 @@
       if (typeof rest.note === 'string' && rest.note.length > 4000) rest.note = rest.note.slice(0,4000);
       localStorage.setItem('elip_current', JSON.stringify(rest));
     } catch (e) {
+      console.warn('[setCurLight] skip', e?.name||e);
       try { localStorage.removeItem('elip_current'); } catch {}
     }
   }
@@ -29,12 +109,13 @@
   function initCur(){
     let cur = getCur();
     if (!cur) {
-      cur = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'' , dataAcc:'', dataScad:'', note:'', lines:[] };
+      cur = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
       setCurLight(cur);
     }
     return cur;
   }
 
+  // ---------------- Editor ----------------
   function fillForm(){
     const c = initCur();
     ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'].forEach(id => { const el = $('#'+id); if (el) el.value = c[id] || ''; });
@@ -48,7 +129,7 @@
     (c.lines||[]).forEach((r,i) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><input class="form-control form-control-sm line-code" data-idx="${i}" placeholder="Cod." value="${r.code||''}"></td>
+        <td><input class="form-control form-control-sm line-code" list="catalogCodes" data-idx="${i}" placeholder="Cod." value="${r.code||''}"></td>
         <td><input class="form-control form-control-sm line-desc" data-idx="${i}" placeholder="Descrizione…" value="${r.desc||''}"></td>
         <td><input type="number" min="0" step="1" class="form-control form-control-sm text-end line-qty" data-idx="${i}" value="${r.qty||1}"></td>
         <td><input type="number" min="0" step="0.01" class="form-control form-control-sm text-end line-price" data-idx="${i}" value="${r.price||0}"></td>
@@ -63,10 +144,27 @@
     body.onclick = onLineClick;
     recalcTotals();
   }
+  function addLine(r){
+    const c = initCur();
+    c.lines.push(r);
+    setCurLight(c);
+    renderLines();
+    recalcTotals();
+  }
+  function addCustomLine(){ addLine({code:'',desc:'',qty:1,price:0,done:false,doneBy:'',doneDate:''}); }
   function onLineEdit(e){
     const c = initCur();
     const i = e.target.dataset.idx;
-    if (e.target.classList.contains('line-code')) c.lines[i].code = e.target.value;
+    if (e.target.classList.contains('line-code')) {
+      const v = e.target.value;
+      c.lines[i].code = v;
+      const hit = getCatalog().find(x=>x.code.toLowerCase()===String(v||'').toLowerCase());
+      if (hit) {
+        c.lines[i].desc = hit.desc;
+        const desc = e.target.closest('tr')?.querySelector('.line-desc');
+        if (desc) desc.value = hit.desc;
+      }
+    }
     if (e.target.classList.contains('line-desc')) c.lines[i].desc = e.target.value;
     if (e.target.classList.contains('line-qty')) c.lines[i].qty = parseFloat(e.target.value)||0;
     if (e.target.classList.contains('line-price')) c.lines[i].price = parseFloat(e.target.value)||0;
@@ -85,6 +183,7 @@
       renderLines();
     }
   }
+
   function updateProgress(){
     const c = initCur();
     let toDo=0, done=0;
@@ -115,7 +214,7 @@
     updateProgress();
   }
 
-  // ---- FOTO preview ---------------------------------------------------------
+  // ---------------- Foto (anteprima via ObjectURL, niente base64) ----------------
   function renderImages(){
     const wrap = $('#imgPreview'); if (!wrap) return;
     wrap.innerHTML = '';
@@ -132,7 +231,7 @@
     };
   }
 
-  // ---- ARCHIVIO table -------------------------------------------------------
+  // ---------------- Archivio (tabella + filtri + apri) ----------------
   function computeAccCounters(arr){
     let ok=0,no=0;
     (arr||[]).forEach(r => ((r.data_accettazione||'').toString().trim()? ok++ : no++));
@@ -199,13 +298,18 @@
     if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
   }
 
+  // ---------------- Toast ----------------
   window.toastSaved = function(){
     const el = $('#toastSave'); if (!el) return;
     try { new bootstrap.Toast(el).show(); } catch {}
   };
+
+  // ---------------- Hooks chiamati da app-supabase.js ----------------
   window.renderArchiveLocal = function(){ renderArchiveTable(); };
 
+  // ---------------- Bind eventi ----------------
   function bind(){
+    // Nuovo
     $('#btnNew')?.addEventListener('click', (e)=>{
       e.preventDefault();
       const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
@@ -215,6 +319,7 @@
       $('#imgPreview') && ($('#imgPreview').innerHTML = '');
       fillForm(); renderLines(); renderImages();
     });
+    // Pulisci
     $('#btnClear')?.addEventListener('click', (e)=>{
       e.preventDefault();
       const c = initCur();
@@ -224,12 +329,20 @@
       $('#imgPreview') && ($('#imgPreview').innerHTML = '');
       fillForm(); renderLines(); renderImages();
     });
+    // Salva
     $('#btnSave')?.addEventListener('click', async (e)=>{
       e.preventDefault();
       try { await window.dbApi.saveToSupabase(false); } catch(err){ alert('Errore salvataggio: ' + (err?.message||err)); }
     });
+    // Foto
     $('#imgInput')?.addEventListener('change', e => { window.__elipPhotosQueue = Array.from(e.target.files||[]); renderImages(); });
 
+    // Catalogo
+    $('#catalogSearch')?.addEventListener('input', e => renderCatalog(e.target.value));
+    $('#btnAddCustom')?.addEventListener('click', addCustomLine);
+    $('#btnEditCatalog')?.addEventListener('click', editCatalog);
+
+    // Archivio
     $('#filterQuery')?.addEventListener('input', renderArchiveTable);
     $('#fltAll')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltAll').classList.add('active'); $('#fltOk')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
     $('#fltOk')?.addEventListener('click', (e)=>{ e.preventDefault(); $('#fltOk').classList.add('active'); $('#fltAll')?.classList.remove('active'); $('#fltNo')?.classList.remove('active'); renderArchiveTable(); });
@@ -241,7 +354,11 @@
     });
   }
 
+  // ---------------- Init ----------------
   document.addEventListener('DOMContentLoaded', async () => {
+    ensureCatalog();
+    buildDatalist();
+    renderCatalog('');
     fillForm();
     renderLines();
     renderImages();
