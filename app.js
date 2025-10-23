@@ -682,22 +682,19 @@ Totale: ${EURO(tot)}`);
 
 
 // ===== Scadenza & Alert =====
-
-  function getProgressPctFromCur(){
-    // Legge dallo storage per evitare dipendenze di ordine
-    let c = null;
-    try { c = JSON.parse(localStorage.getItem('elip_current')||'null'); } catch {}
-    if (!c || !Array.isArray(c.lines)) return 0;
-    let toDo=0, done=0;
-    for (const r of c.lines){
-      const has = (r?.desc||'').toString().trim()!=='' || (+r?.qty||0)>0 || (+r?.price||0)>0;
-      if (has) { toDo++; if (r?.doneDate && String(r.doneDate).trim()) done++; }
-    }
-    return toDo ? Math.round((done/toDo)*100) : 0;
+function getProgressPctFromCur(){
+  // Legge dallo storage per evitare dipendenze di ordine
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
+  if (!c || !Array.isArray(c.lines)) return 0;
+  let toDo = 0, done = 0;
+  for (const r of c.lines){
+    const has = (r?.desc||'').toString().trim() !== '' || (+r?.qty||0) > 0 || (+r?.price||0) > 0;
+    if (has) { toDo++; if (r?.doneDate && String(r.doneDate).trim()) done++; }
   }
-  });
   return toDo ? Math.round((done/toDo)*100) : 0;
 }
+
 function parseISODate(v){
   if (!v) return null;
   const d = new Date(v);
@@ -710,7 +707,6 @@ function diffDaysUTC(a,b){
   return Math.round((ua - ub)/MS);
 }
 function ensureDeadlineAlertContainer(){
-  // place alert right above the lines table inside the big card
   const table = document.getElementById('linesTable');
   if (!table) return null;
   const card = table.closest('.card');
@@ -745,33 +741,19 @@ function applyScadenzaInputStyle(isWarn){
   el.style.color = isWarn ? '#dc3545' : '';
   el.style.fontWeight = isWarn ? '600' : '';
 }
-
-  function updateDeadlineUI(){
-    let c = null; try { c = JSON.parse(localStorage.getItem('elip_current')||'null'); } catch {}
-    c = c || {};
-    const pct = getProgressPctFromCur();
-    const dStr = c.dataScad || (document.getElementById('dataScad')?.value || '');
-    const d = parseISODate(dStr);
-    if (!d || pct===100){
-      hideDeadlineAlert();
-      applyScadenzaInputStyle(false);
-      return;
-    }
-    const today = new Date();
-    const daysLeft = diffDaysUTC(d, today);
-    if (daysLeft < 0){
-      applyScadenzaInputStyle(true);
-      showDeadlineAlert(`<strong>Attenzione:</strong> scadenza <u>già passata</u> (${DTIT(dStr)}).`);
-    } else if (daysLeft <= 5){
-      applyScadenzaInputStyle(true);
-      showDeadlineAlert(`<strong>Attenzione:</strong> mancano <u>${daysLeft} giorni</u> alla scadenza lavori (${DTIT(dStr)}).`);
-    } else {
-      hideDeadlineAlert();
-      applyScadenzaInputStyle(false);
-    }
+function updateDeadlineUI(){
+  let c = null; try { c = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
+  c = c || {};
+  const pct = getProgressPctFromCur();
+  const dStr = c.dataScad || (document.getElementById('dataScad')?.value || '');
+  const d = parseISODate(dStr);
+  if (!d || pct === 100){
+    hideDeadlineAlert();
+    applyScadenzaInputStyle(false);
+    return;
   }
   const today = new Date();
-  const daysLeft = diffDaysUTC(d, today); // positive = in futuro
+  const daysLeft = diffDaysUTC(d, today);
   if (daysLeft < 0){
     applyScadenzaInputStyle(true);
     showDeadlineAlert(`<strong>Attenzione:</strong> scadenza <u>già passata</u> (${DTIT(dStr)}).`);
@@ -783,13 +765,10 @@ function applyScadenzaInputStyle(isWarn){
     applyScadenzaInputStyle(false);
   }
 }
-
-
-// ===== Banner giorni alla scadenza (sotto il campo) =====
+// Banner sotto il campo "Data scadenza"
 function ensureScadenzaBanner(){
   const input = document.getElementById('dataScad');
   if (!input) return null;
-  // place banner just after input
   let bn = document.getElementById('daysLeftBanner');
   if (!bn){
     bn = document.createElement('div');
@@ -799,46 +778,19 @@ function ensureScadenzaBanner(){
   }
   return bn;
 }
-
-  function updateDaysLeftBanner(){
-    let c = null; try { c = JSON.parse(localStorage.getItem('elip_current')||'null'); } catch {}
-    c = c || {};
-    const pct = getProgressPctFromCur();
-    const bn = ensureScadenzaBanner();
-    if (!bn) return;
-    const dVal = c.dataScad || (document.getElementById('dataScad')?.value || '');
-    const d = dVal ? new Date(dVal) : null;
-    if (!d || isNaN(d) || pct===100){ bn.textContent=''; return; }
-    const today = new Date();
-    const MS = 86400000;
-    const daysLeft = Math.round((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) - Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/MS);
-    if (daysLeft < 0){ bn.innerHTML = '<span class="text-danger fw-bold">Scaduta</span>'; }
-    else if (daysLeft <= 5){ bn.innerHTML = `<span class="text-danger fw-semibold">Mancano ${daysLeft} giorni alla scadenza</span>`; }
-    else { bn.textContent=''; }
-  }
+function updateDaysLeftBanner(){
+  let c = null; try { c = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
+  c = c || {};
+  const pct = getProgressPctFromCur();
+  const bn = ensureScadenzaBanner();
+  if (!bn) return;
+  const dVal = c.dataScad || (document.getElementById('dataScad')?.value || '');
+  const d = dVal ? new Date(dVal) : null;
+  if (!d || isNaN(d) || pct === 100){ bn.textContent=''; return; }
   const today = new Date();
   const MS = 86400000;
   const daysLeft = Math.round((Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()) - Date.UTC(today.getFullYear(),today.getMonth(),today.getDate()))/MS);
-  if (daysLeft < 0){ bn.innerHTML = '<span class=\"text-danger fw-bold\">Scaduta</span>'; }
-  else if (daysLeft <= 5){ bn.innerHTML = `<span class=\"text-danger fw-semibold\">Mancano ${daysLeft} giorni alla scadenza</span>`; }
+  if (daysLeft < 0){ bn.innerHTML = '<span class="text-danger fw-bold">Scaduta</span>'; }
+  else if (daysLeft <= 5){ bn.innerHTML = `<span class="text-danger fw-semibold">Mancano ${daysLeft} giorni alla scadenza</span>`; }
   else { bn.textContent=''; }
-}
-
-
-function ensureInScadenzaButton(){
-  const grp = document.querySelector('#tab-archivio .btn-group');
-  if (!grp || document.getElementById('fltDue')) return;
-  const btn = document.createElement('button');
-  btn.className = 'btn btn-outline-warning';
-  btn.id = 'fltDue';
-  btn.textContent = 'In scadenza ⏰';
-  grp.appendChild(btn);
-  btn.addEventListener('click', (e)=>{
-    e.preventDefault();
-    document.getElementById('fltAll')?.classList.remove('active');
-    document.getElementById('fltOk')?.classList.remove('active');
-    document.getElementById('fltNo')?.classList.remove('active');
-    btn.classList.add('active');
-    renderArchiveTable();
-  });
 }
