@@ -561,10 +561,30 @@ Totale: ${EURO(tot)}`);
     }
     return host;
   }
-  function showDeadlineAlert(html){ /* no-op: alert rimosso */ }
-  function hideDeadlineAlert(){ /* no-op: alert rimosso */ }
-  function applyScadenzaInputStyle(isWarn){ /* no-op: niente colorazione campo */ }
-  function updateDeadlineUI(){ try{ updateDaysLeftBanner(); }catch{} }
+  function showDeadlineAlert(html){
+    const host = ensureDeadlineAlertContainer();
+    if (!host) return;
+    host.innerHTML = '';
+    const div = document.createElement('div');
+    div.id = 'deadlineAlert';
+    div.className = 'alert alert-danger d-flex align-items-center my-2';
+    div.role = 'alert';
+    div.innerHTML = html;
+    host.appendChild(div);
+  }
+  function hideDeadlineAlert(){
+    const el = document.getElementById('deadlineAlert');
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+  function applyScadenzaInputStyle(isWarn){
+    const el = document.getElementById('dataScad');
+    if (!el) return;
+    el.classList.toggle('is-invalid', !!isWarn);
+    el.style.color = isWarn ? '#dc3545' : '';
+    el.style.fontWeight = isWarn ? '600' : '';
+  }
+  function updateDeadlineUI(){
+    let c = null; try { c = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
     c = c || {};
     const pct = getProgressPctFromCur();
     const dStr = c.dataScad || (document.getElementById('dataScad')?.value || '');
