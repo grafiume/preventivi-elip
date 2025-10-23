@@ -100,6 +100,7 @@
     const pct = toDo ? Math.round((done/toDo)*100) : 0;
     const bar = $('#progressBar');
     if (bar) { bar.style.width = pct+'%'; bar.textContent = pct+'%'; }
+    updateDeadlineUI();
   }
   function recalcTotals(){
     const c = initCur();
@@ -115,6 +116,7 @@
     $('#totale') && ($('#totale').textContent = EURO(tot));
     updateProgress();
     updateAccPill();
+    updateDeadlineUI();
   }
 
   // ===== Righe =====
@@ -122,8 +124,8 @@
     const c = initCur();
     c.lines.push(r);
     setCurLight(c);
-    renderLines();
-    recalcTotals();
+    renderLines(); updateDeadlineUI();
+    recalcTotals(); updateDeadlineUI();
   }
   function renderLines(){
     const c = initCur();
@@ -148,7 +150,7 @@
     });
     body.oninput = onLineEdit;
     body.onclick = onLineClick;
-    recalcTotals();
+    recalcTotals(); updateDeadlineUI();
   }
   function onLineEdit(e){
     const c = initCur();
@@ -169,8 +171,8 @@
     if (e.target.classList.contains('line-operator')) c.lines[i].doneBy = e.target.value;
     if (e.target.classList.contains('line-date')) c.lines[i].doneDate = e.target.value;
     setCurLight(c);
-    renderLines();
-    recalcTotals();
+    renderLines(); updateDeadlineUI();
+    recalcTotals(); updateDeadlineUI();
   }
   function onLineClick(e){
     const btn = e.target.closest('button[data-del]');
@@ -179,7 +181,7 @@
       const c = initCur();
       c.lines.splice(i,1);
       setCurLight(c);
-      renderLines();
+      renderLines(); updateDeadlineUI();
     }
   }
 
@@ -356,7 +358,7 @@
     };
     setCurLight(cur);
     fillForm();
-    renderLines();
+    renderLines(); updateDeadlineUI();
     try { window.dbApi?.loadPhotosFor(cur.id).then(list => setServerThumbs(list)); } catch {}
     const btn = document.querySelector('[data-bs-target="#tab-editor"]');
     if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
@@ -503,7 +505,7 @@ Totale: ${EURO(tot)}`);
     const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
     ids.forEach(id => { const el = $('#'+id); if (el) el.value = c[id] || ''; });
     const q = $('#quoteId'); if (q) q.textContent = c.id;
-    updateAccPill(); updateProgress(); recalcTotals();
+    updateAccPill(); updateProgress(); recalcTotals(); updateDeadlineUI();
   }
   function snapshotFormToCur(){
     const c = initCur();
@@ -530,7 +532,7 @@ Totale: ${EURO(tot)}`);
     if (typeof window.__elipResetPhotos === 'function') window.__elipResetPhotos(); else { /* fallback */ }
     const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
     ids.forEach(id => { const el = $('#'+id); if (el) el.value = ''; });
-    fillForm(); renderLines(); focusFirstField();
+    fillForm(); renderLines(); updateDeadlineUI(); focusFirstField();
   }
 
   function toastSaved(){
@@ -574,7 +576,7 @@ Totale: ${EURO(tot)}`);
       const c = initCur();
       setCurLight({ id:c.id, createdAt:c.createdAt, cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] });
       if (typeof window.__elipResetPhotos === 'function') window.__elipResetPhotos();
-      fillForm(); renderLines(); focusFirstField();
+      fillForm(); renderLines(); updateDeadlineUI(); focusFirstField();
       const btn = document.querySelector('[data-bs-target="#tab-editor"]');
       if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
     });
@@ -643,6 +645,8 @@ Totale: ${EURO(tot)}`);
 
     $('#dataAcc')?.addEventListener('input', updateAccPill);
     $('#dataAcc')?.addEventListener('change', updateAccPill);
+    $('#dataScad')?.addEventListener('input', updateDeadlineUI);
+    $('#dataScad')?.addEventListener('change', updateDeadlineUI);
   }
 
   async function init(){
@@ -652,7 +656,7 @@ Totale: ${EURO(tot)}`);
       renderCatalog('');
       initCur();
       fillForm();
-      renderLines();
+      renderLines(); updateDeadlineUI();
       if (window.dbApi?.loadArchive) await window.dbApi.loadArchive();
       renderArchiveTable();
       focusFirstField();
@@ -661,3 +665,85 @@ Totale: ${EURO(tot)}`);
 
   document.addEventListener('DOMContentLoaded', ()=>{ bind(); init(); });
 })();
+
+
+// ===== Scadenza & Alert =====
+function getProgressPctFromCur(){
+  const c = initCur();
+  let toDo=0, done=0;
+  (c.lines||[]).forEach(r => {
+    const has = (r.desc||'').trim()!=='' || (+r.qty||0)>0 || (+r.price||0)>0;
+    if (has) { toDo++; if (r.doneDate && String(r.doneDate).trim()) done++; }
+  });
+  return toDo ? Math.round((done/toDo)*100) : 0;
+}
+function parseISODate(v){
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+}
+function diffDaysUTC(a,b){
+  const MS = 24*60*60*1000;
+  const ua = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
+  const ub = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
+  return Math.round((ua - ub)/MS);
+}
+function ensureDeadlineAlertContainer(){
+  // place alert right above the lines table inside the big card
+  const table = document.getElementById('linesTable');
+  if (!table) return null;
+  const card = table.closest('.card');
+  if (!card) return null;
+  let host = card.querySelector('.deadline-host');
+  if (!host){
+    host = document.createElement('div');
+    host.className = 'deadline-host';
+    card.insertBefore(host, card.firstChild);
+  }
+  return host;
+}
+function showDeadlineAlert(html){
+  const host = ensureDeadlineAlertContainer();
+  if (!host) return;
+  host.innerHTML = '';
+  const div = document.createElement('div');
+  div.id = 'deadlineAlert';
+  div.className = 'alert alert-danger d-flex align-items-center my-2';
+  div.role = 'alert';
+  div.innerHTML = html;
+  host.appendChild(div);
+}
+function hideDeadlineAlert(){
+  const el = document.getElementById('deadlineAlert');
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+function applyScadenzaInputStyle(isWarn){
+  const el = document.getElementById('dataScad');
+  if (!el) return;
+  el.classList.toggle('is-invalid', !!isWarn);
+  el.style.color = isWarn ? '#dc3545' : '';
+  el.style.fontWeight = isWarn ? '600' : '';
+}
+function updateDeadlineUI(){
+  const c = initCur();
+  const pct = getProgressPctFromCur();
+  const dStr = c.dataScad || (document.getElementById('dataScad')?.value || '');
+  const d = parseISODate(dStr);
+  if (!d || pct===100){
+    hideDeadlineAlert();
+    applyScadenzaInputStyle(false);
+    return;
+  }
+  const today = new Date();
+  const daysLeft = diffDaysUTC(d, today); // positive = in futuro
+  if (daysLeft < 0){
+    applyScadenzaInputStyle(true);
+    showDeadlineAlert(`<strong>Attenzione:</strong> scadenza <u>già passata</u> (${DTIT(dStr)}).`);
+  } else if (daysLeft <= 5){
+    applyScadenzaInputStyle(true);
+    showDeadlineAlert(`<strong>Attenzione:</strong> mancano <u>${daysLeft} giorni</u> alla scadenza lavori (${DTIT(dStr)}).`);
+  } else {
+    hideDeadlineAlert();
+    applyScadenzaInputStyle(false);
+  }
+}
