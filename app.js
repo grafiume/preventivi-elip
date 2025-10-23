@@ -1,5 +1,11 @@
 
-/* Preventivi ELIP — app.js (2025-10-23, FIX: catalogo sempre visibile + load DB robusto) */
+/* Preventivi ELIP — app.js (2025-10-23)
+   - Fix: aggiunta fillForm()
+   - Catalogo robusto (fallback default)
+   - Archivio: percentuale avanzamento + badge "Chiusa" (100%)
+   - Stato accettazione affiancato quando < 100%
+   - Dopo Salva: pulizia editor e nuovo numero
+*/
 (function(){
   'use strict';
 
@@ -41,7 +47,6 @@
     try { localStorage.setItem('elip_catalog', JSON.stringify(rows||[])); } catch {}
   }
   function ensureCatalog(){
-    // se manca o è vuoto, inizializza
     const arr = getCatalog();
     if (!arr.length) setCatalog(DEFAULT_CATALOG);
   }
@@ -211,7 +216,32 @@
     }
   }
 
-  /* ====== Archivio ====== */
+  /* ====== Helpers ====== */
+  function snapshotFormToCur(){
+    const c = initCur();
+    c.cliente   = ($('#cliente')?.value || '').trim();
+    c.articolo  = ($('#articolo')?.value || '').trim();
+    c.ddt       = ($('#ddt')?.value || '').trim();
+    c.telefono  = ($('#telefono')?.value || '').trim();
+    c.email     = ($('#email')?.value || '').trim();
+    c.dataInvio = ($('#dataInvio')?.value || '').trim();
+    c.dataAcc   = ($('#dataAcc')?.value || '').trim();
+    c.dataScad  = ($('#dataScad')?.value || '').trim();
+    c.note      = ($('#note')?.value || '');
+    setCurLight(c);
+    return c;
+  }
+  function fillForm(){
+    const c = initCur();
+    const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
+    ids.forEach(id => { const el = $('#'+id); if (el) el.value = c[id] || ''; });
+    const q = $('#quoteId'); if (q) q.textContent = c.id;
+    updateAccPill();
+    updateProgress();
+    recalcTotals();
+  }
+
+  /* ====== Archivio: progress percent + Chiusa + stato accettazione ====== */
   function coerceArray(a){
     if (!a) return [];
     if (Array.isArray(a)) return a;
@@ -235,6 +265,7 @@
     }
     return toDo ? Math.round((done/toDo)*100) : 0;
   }
+
   function computeAccCounters(arr){
     let ok=0,no=0;
     (arr||[]).forEach(r => ((r.data_accettazione||'').toString().trim()? ok++ : no++));
