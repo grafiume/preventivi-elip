@@ -1,5 +1,5 @@
 
-/* Preventivi ELIP — app.js (FINAL) */
+/* Preventivi ELIP — app.js (FINAL v2) */
 (function(){
   'use strict';
   const $ = (s, r=document) => r.querySelector(s);
@@ -184,7 +184,7 @@
   }
 
   // ===== Foto (locale + server) =====
-  let photoItems = [];            // [{id,file,key,thumb,dataUrl,origin}]
+  let photoItems = [];            // [{id,file,key,thumb,full,origin,path?}]
   const photoIndex = new Map();   // key -> idx
   function fileKey(f){ return `${f?.name||'?' }|${f?.size||0}|${f?.lastModified||0}`; }
   function readFileAsDataURL(file){
@@ -217,17 +217,18 @@
       const dataUrl = await readFileAsDataURL(f);
       const thumb = await makeThumbFromDataURL(dataUrl, 164);
       const id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now()+'_'+Math.random().toString(36).slice(2,8));
-      const item = { id, file: f, key, dataUrl, thumb, origin:'local' };
+      const item = { id, file: f, key, full: dataUrl, thumb, origin:'local' };
       photoIndex.set(key, photoItems.length);
       photoItems.push(item);
     }
     renderPhotoArea();
   }
-  function setServerThumbs(urls){
+  function setServerThumbs(list){
+    // list: [{thumb, full, path}]
     photoItems = photoItems.filter(x => x.origin === 'local');
-    for (const u of (urls||[])){
+    for (const obj of (list||[])){
       const id = 'srv_'+(crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2,10));
-      photoItems.push({ id, file:null, key:'srv:'+id, dataUrl:u, thumb:u, origin:'server' });
+      photoItems.push({ id, file:null, key:'srv:'+id, full: obj.full, thumb: obj.thumb || obj.full, path: obj.path, origin:'server' });
     }
     renderPhotoArea();
   }
@@ -243,16 +244,19 @@
       const img = document.createElement('img');
       img.src = it.thumb; img.alt = it.file?.name || 'Foto';
       img.style.width='100%'; img.style.height='100%'; img.style.objectFit='cover';
-      img.dataset.full = it.dataUrl || it.thumb;
+      img.dataset.full = it.full || it.thumb;
       card.appendChild(img);
-      if (it.origin==='local'){
-        const btn = document.createElement('button');
-        btn.type='button'; btn.textContent='×';
-        btn.className='btn btn-sm btn-danger position-absolute';
-        btn.style.top='.25rem'; btn.style.right='.25rem'; btn.style.lineHeight='1';
-        btn.setAttribute('data-remove-id', it.id);
-        card.appendChild(btn);
-      } else {
+
+      // X per rimuovere (sia local che server)
+      const btn = document.createElement('button');
+      btn.type='button'; btn.textContent='×';
+      btn.title = (it.origin==='server') ? 'Elimina dal server' : 'Rimuovi dalla coda';
+      btn.className='btn btn-sm btn-danger position-absolute';
+      btn.style.top='.25rem'; btn.style.right='.25rem'; btn.style.lineHeight='1';
+      btn.setAttribute('data-remove-id', it.id);
+      card.appendChild(btn);
+
+      if (it.origin==='server'){
         const badge = document.createElement('div');
         badge.textContent='cloud';
         badge.className='badge text-bg-primary position-absolute';
@@ -264,6 +268,7 @@
   }
   window.__elipGetUploadFiles = function(){ return photoItems.filter(x=>x.origin==='local').map(x=>x.file).filter(Boolean); };
   window.__elipClearUploadQueue = function(){ photoItems = photoItems.filter(x=>x.origin!=='local'); renderPhotoArea(); };
+  window.__elipResetPhotos = function(){ photoItems = []; renderPhotoArea(); };
 
   // ===== Archivio =====
   function coerceArray(a){ if (!a) return []; if (Array.isArray(a)) return a; try{const p=JSON.parse(a); return Array.isArray(p)?p:[];}catch{return [];} }
@@ -285,7 +290,7 @@
     }
     return toDo ? Math.round((done/toDo)*100) : 0;
   }
-  function renderArchiveTable(){
+  async function renderArchiveTable(){
     let arr = [];
     try { arr = JSON.parse(localStorage.getItem('elip_archive') || '[]') || []; } catch {}
     const tbody = $('#archBody'); if (!tbody) return;
@@ -352,7 +357,7 @@
     setCurLight(cur);
     fillForm();
     renderLines();
-    try { window.dbApi?.loadPhotosFor(cur.id).then(setServerThumbs); } catch {}
+    try { window.dbApi?.loadPhotosFor(cur.id).then(list => setServerThumbs(list)); } catch {}
     const btn = document.querySelector('[data-bs-target="#tab-editor"]');
     if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
   }
@@ -401,7 +406,6 @@
     const url = URL.createObjectURL(blob);
     const ifr = $('#pdfFrame'); if (ifr) ifr.src = url;
 
-    // Anteprima JPG canvas sotto al PDF
     const modalBody = document.querySelector('#pdfModal .modal-body');
     if (modalBody && !document.getElementById('pdfJPGPreview')){
       const img = document.createElement('img');
@@ -515,14 +519,18 @@ Totale: ${EURO(tot)}`);
     setCurLight(c);
     return c;
   }
+  function focusFirstField(){
+    const el = $('#cliente') || document.querySelector('input,textarea,select');
+    if (el) { el.focus(); try{ el.select && el.select(); }catch{} }
+  }
   function clearEditorToNew(){
     const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
     setCurLight(fresh);
-    photoItems = photoItems.filter(x=>x.origin==='server');
-    renderPhotoArea();
+    // reset foto
+    if (typeof window.__elipResetPhotos === 'function') window.__elipResetPhotos(); else { /* fallback */ }
     const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
     ids.forEach(id => { const el = $('#'+id); if (el) el.value = ''; });
-    fillForm(); renderLines();
+    fillForm(); renderLines(); focusFirstField();
   }
 
   function toastSaved(){
@@ -565,8 +573,8 @@ Totale: ${EURO(tot)}`);
       e.preventDefault();
       const c = initCur();
       setCurLight({ id:c.id, createdAt:c.createdAt, cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] });
-      photoItems = photoItems.filter(x=>x.origin!=='local'); renderPhotoArea();
-      fillForm(); renderLines();
+      if (typeof window.__elipResetPhotos === 'function') window.__elipResetPhotos();
+      fillForm(); renderLines(); focusFirstField();
       const btn = document.querySelector('[data-bs-target="#tab-editor"]');
       if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
     });
@@ -578,7 +586,6 @@ Totale: ${EURO(tot)}`);
         toastSaved(); savedModal();
         try { await window.dbApi.loadArchiveRetry?.(); } catch {}
         window.renderArchiveLocal?.();
-        // passa ad Archivio e pulisci editor
         const t = document.querySelector('[data-bs-target="#tab-archivio"]');
         if (t) { try { new bootstrap.Tab(t).show(); } catch { t.click(); } }
         clearEditorToNew();
@@ -606,14 +613,22 @@ Totale: ${EURO(tot)}`);
       if (b){ openFromArchive(b.getAttribute('data-open-num')); }
     });
 
-    $('#imgPreview')?.addEventListener('click', (e)=>{
+    // Click su anteprima: X elimina, altrimenti apre modale con immagine full
+    $('#imgPreview')?.addEventListener('click', async (e)=>{
       const btn = e.target.closest('button[data-remove-id]');
       if (btn){
         const id = btn.getAttribute('data-remove-id');
         const i = photoItems.findIndex(x=>x.id===id);
-        if (i>=0){ 
+        if (i>=0){
           const it = photoItems[i];
-          if (it.origin==='local'){ photoItems.splice(i,1); renderPhotoArea(); }
+          if (it.origin==='server'){
+            if (confirm('Eliminare definitivamente questa foto dal server?')){
+              try { await window.dbApi?.deletePhoto?.(it.path); } catch (err) { alert('Eliminazione fallita: '+(err?.message||err)); return; }
+              photoItems.splice(i,1); renderPhotoArea();
+            }
+          } else {
+            photoItems.splice(i,1); renderPhotoArea();
+          }
         }
         return;
       }
@@ -640,6 +655,7 @@ Totale: ${EURO(tot)}`);
       renderLines();
       if (window.dbApi?.loadArchive) await window.dbApi.loadArchive();
       renderArchiveTable();
+      focusFirstField();
     } catch (e) { console.error('[init failed]', e); }
   }
 
