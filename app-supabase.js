@@ -1,8 +1,8 @@
 
-/* Preventivi ELIP — app-supabase.js (2025-10-23 fixes)
-   - Robust loadArchive + retry
-   - Photo upload to Storage + persist public URLs into preventivi.photos (array) if column exists
-   - After save, refresh archive and allow UI callback
+/* Preventivi ELIP — app-supabase.js (2025-10-23)
+   - Rimuove 'photos' dal payload (niente errore PGRST204 se la colonna non esiste)
+   - Upload foto + generazione thumbnail 164x164 nel bucket 'photos' (path: numero/ e numero/thumbs/)
+   - Refresh Archivio dopo salvataggio (con retry)
 */
 (function(){
   'use strict';
@@ -34,7 +34,6 @@
     if (last) throw last;
   }
 
-  const nz = (v)=> (v===undefined ? null : v);
   const ntext = (s)=> (typeof s==='string' && s.trim()!=='' ? s : null);
   const ndate = (s)=> (typeof s==='string' && s.trim()!=='' ? s : null);
   const nnumber = (n)=> { const x = Number(n); return Number.isFinite(x) ? x : null; };
@@ -53,10 +52,10 @@
       data_accettazione: ndate(cur.dataAcc),
       data_scadenza: ndate(cur.dataScad),
       note: ntext(cur.note),
-      linee: nz(cur.lines || []),
+      linee: (cur.lines || []),
       imponibile: nnumber(imponibile),
-      totale: nnumber(totale),
-      photos: Array.isArray(cur.photos) ? cur.photos : null
+      totale: nnumber(totale)
+      // Niente 'photos' nel payload → evita PGRST204
     };
   }
 
@@ -94,34 +93,68 @@
     }
   }
 
+  async function fileToImageBitmap(file){
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await createImageBitmap(await (await fetch(url)).blob());
+      return img;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+  async function makeThumb(file, size=164){
+    const img = await fileToImageBitmap(file);
+    const ratio = Math.max(size / img.width, size / img.height);
+    const w = Math.round(img.width * ratio);
+    const h = Math.round(img.height * ratio);
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.clearRect(0,0,size,size);
+    // center-crop
+    ctx.drawImage(img, (size - w)/2, (size - h)/2, w, h);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+    return blob; // 164x164 jpg
+  }
+
   async function uploadPhoto(file, numero){
     const c = supa();
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const fname = `${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const baseName = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
+    const fname = `${baseName}.${ext}`;
     const path = `${numero}/${fname}`;
-    // Upload
+    // Upload originale
     await withRetry(async () => {
       const { error } = await c.storage.from('photos').upload(path, file, { cacheControl: '3600', upsert: false });
       if (error) throw error;
     });
-    // Public URL
+    // Thumbnail 164x164
+    let thumbUrl = null;
+    try {
+      const thumbBlob = await makeThumb(file, 164);
+      const tpath = `${numero}/thumbs/${baseName}.jpg`;
+      await withRetry(async () => {
+        const { error } = await c.storage.from('photos').upload(tpath, thumbBlob, { cacheControl: '3600', upsert: false, contentType: 'image/jpeg' });
+        if (error) throw error;
+      });
+      const { data: t } = c.storage.from('photos').getPublicUrl(tpath);
+      thumbUrl = t?.publicUrl || null;
+    } catch (e) {
+      console.warn('[thumb upload failed]', e?.message || e);
+    }
+
+    // Public URL originale
     const { data: pub } = c.storage.from('photos').getPublicUrl(path);
     const url = pub?.publicUrl || null;
 
-    // Fallback table insert (optional)
-    try { await c.from('photos').insert([{ record_num: numero, path, url }]); } catch(_) {}
-
-    return { path, url };
-  }
-
-  async function persistPhotosOnRecord(numero, photos){
-    const c = supa();
+    // Persisti nella tabella photos (se presente)
     try {
-      const { error } = await c.from('preventivi').update({ photos }).eq('numero', numero);
-      if (error) console.warn('[persistPhotosOnRecord] update failed (maybe no photos column):', error.message);
-    } catch (e) {
-      console.warn('[persistPhotosOnRecord] not persisted', e?.message);
-    }
+      const row = thumbUrl ? [{ record_num: numero, path, url, thumb_url: thumbUrl }] : [{ record_num: numero, path, url }];
+      await c.from('photos').insert(row);
+    } catch(_) {}
+
+    return { path, url, thumbUrl };
   }
 
   async function loadArchive(){
@@ -166,27 +199,12 @@
       return false;
     }
 
-    // Foto (best-effort). Colleziona URL e salva anche in preventivi.photos se possibile
+    // Foto (best-effort)
     const queue = Array.isArray(window.__elipPhotosQueue) ? window.__elipPhotosQueue.slice() : [];
-    const newUrls = [];
     for (const f of queue) {
-      try {
-        const { url } = await uploadPhoto(f, cur.id);
-        if (url) newUrls.push(url);
-      } catch (e) { console.warn('[uploadPhoto]', e); }
+      try { await uploadPhoto(f, cur.id); } catch (e) { console.warn('[uploadPhoto]', e); }
     }
     window.__elipPhotosQueue = [];
-    if (newUrls.length) {
-      const merged = Array.isArray(cur.photos) ? [...cur.photos, ...newUrls] : newUrls;
-      try {
-        const c2 = supa();
-        const { error: upErr } = await c2.from('preventivi').update({ photos: merged }).eq('numero', cur.id);
-        if (upErr) console.warn('[saveToSupabase] update photos failed:', upErr.message);
-        cur.photos = merged;
-        localStorage.setItem('elip_current', JSON.stringify(cur));
-      } catch(e){ console.warn('[saveToSupabase] photos persist warn:', e?.message); }
-      try { await persistPhotosOnRecord(cur.id, cur.photos); } catch(_) {}
-    }
 
     await loadArchiveRetry();
     if (typeof window.renderArchiveLocal === 'function') {
@@ -195,7 +213,7 @@
 
     if (typeof window.toastSaved === 'function') window.toastSaved();
 
-    // Tab switch
+    // Tab Archivio se richiesto
     if (archiveAfter) {
       const t = document.querySelector('[data-bs-target="#tab-archivio"]');
       if (t) { try { new bootstrap.Tab(t).show(); } catch { t.click(); } }

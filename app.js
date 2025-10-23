@@ -1,9 +1,8 @@
 
-/* Preventivi ELIP — app.js (2025-10-23 fixes)
-   - PDF (Dettaglio/Totale) fixed: correct jsPDF access
-   - Email/WhatsApp compose
-   - After save: show "Salvato!" and go Archivio (with refreshed list)
-   - Photos queue hookup (file input)
+/* Preventivi ELIP — app.js (2025-10-23)
+   - PDF (UMD), Email, WhatsApp fix
+   - Anteprima foto 164x164 lato client + coda upload
+   - Dopo Salva: modale + Archivio aggiornato e visibile
 */
 (function(){
   'use strict';
@@ -103,7 +102,6 @@
     try {
       if (!o) { localStorage.removeItem('elip_current'); return; }
       const { images, img, photoData, previewData, ...rest } = o;
-      if (typeof rest.note === 'string' && rest.note.length > 4000) rest.note = rest.note.slice(0,4000);
       localStorage.setItem('elip_current', JSON.stringify(rest));
     } catch { try{ localStorage.removeItem('elip_current'); }catch{} }
   }
@@ -117,10 +115,7 @@
   function initCur(){
     let cur = getCur();
     if (!cur) {
-      cur = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[], photos:[] };
-      setCurLight(cur);
-    } else if (!Array.isArray(cur.photos)) {
-      cur.photos = [];
+      cur = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
       setCurLight(cur);
     }
     return cur;
@@ -227,6 +222,48 @@
     }
   }
 
+  /* ===== Foto: anteprima locale 164x164 ===== */
+  function readFileAsDataURL(file){
+    return new Promise((res,rej)=>{
+      const fr = new FileReader();
+      fr.onload = ()=> res(fr.result);
+      fr.onerror = rej;
+      fr.readAsDataURL(file);
+    });
+  }
+  async function makeLocalThumb(file, size=164){
+    const url = await readFileAsDataURL(file);
+    const img = new Image();
+    img.src = url; await img.decode();
+    const ratio = Math.max(size / img.width, size / img.height);
+    const w = Math.round(img.width * ratio);
+    const h = Math.round(img.height * ratio);
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.clearRect(0,0,size,size);
+    ctx.drawImage(img, (size - w)/2, (size - h)/2, w, h);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  }
+  async function renderPhotoPreview(files){
+    const wrap = $('#imgPreview'); if (!wrap) return;
+    wrap.innerHTML = '';
+    for (const f of files){
+      try{
+        const dataUrl = await makeLocalThumb(f, 164);
+        const a = document.createElement('a');
+        a.href = dataUrl; a.target = '_blank';
+        a.className = 'border rounded d-inline-block';
+        a.style.width = '164px'; a.style.height='164px'; a.style.overflow='hidden';
+        const img = document.createElement('img');
+        img.src = dataUrl; img.alt = f.name; img.style.width='100%'; img.style.height='100%'; img.style.objectFit='cover';
+        a.appendChild(img);
+        wrap.appendChild(a);
+      }catch{}
+    }
+  }
+
   /* ===== Helpers ===== */
   function snapshotFormToCur(){
     const c = initCur();
@@ -252,7 +289,7 @@
     recalcTotals();
   }
   function clearEditorToNew(){
-    const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[], photos:[] };
+    const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
     setCurLight(fresh);
     window.__elipPhotosQueue = [];
     $('#imgInput') && ($('#imgInput').value = '');
@@ -260,7 +297,7 @@
     fillForm(); renderLines();
   }
 
-  /* ===== Archivio and refresh hook ===== */
+  /* ===== Archivio ===== */
   function coerceArray(a){
     if (!a) return [];
     if (Array.isArray(a)) return a;
@@ -314,8 +351,7 @@
       dataAcc: r.data_accettazione || '',
       dataScad: r.data_scadenza || '',
       note: r.note || '',
-      lines: r.linee || [],
-      photos: Array.isArray(r.photos) ? r.photos : []
+      lines: r.linee || []
     };
     setCurLight(cur);
     fillForm();
@@ -370,7 +406,6 @@
   }
   async function makePDF(detail){
     const c = initCur();
-    // jsPDF UMD exposes window.jspdf.jsPDF
     const jsPDF = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : null;
     if (!jsPDF) { alert('jsPDF non disponibile'); return; }
     const doc = new jsPDF({ unit:'pt', format:'a4' });
@@ -429,7 +464,6 @@ Riepilogo:
 Restiamo a disposizione.
 Cordiali saluti`);
     const href = `mailto:${to}?subject=${subject}&body=${body}`;
-    // usare location.assign per certe policy
     window.location.assign(href);
   }
   function composeWhatsApp(){
@@ -443,7 +477,6 @@ Imponibile: ${EURO(imp)}
 Totale: ${EURO(tot)}`);
     const raw = (c.telefono||'').replace(/\D+/g,'');
     const link = raw ? `https://wa.me/${raw}?text=${msg}` : `https://wa.me/?text=${msg}`;
-    // apri in target _blank per evitare blocchi popup (è su click handler)
     window.open(link, '_blank', 'noopener');
   }
 
@@ -459,7 +492,7 @@ Totale: ${EURO(tot)}`);
     $('#btnClear')?.addEventListener('click', (e)=>{
       e.preventDefault();
       const c = initCur();
-      setCurLight({ id:c.id, createdAt:c.createdAt, cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[], photos:[] });
+      setCurLight({ id:c.id, createdAt:c.createdAt, cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] });
       window.__elipPhotosQueue = [];
       $('#imgInput') && ($('#imgInput').value = '');
       $('#imgPreview') && ($('#imgPreview').innerHTML = '');
@@ -473,7 +506,6 @@ Totale: ${EURO(tot)}`);
       const ok = await (window.dbApi?.saveToSupabase ? window.dbApi.saveToSupabase(true) : Promise.resolve(false));
       if (ok) {
         showSavedModal();
-        // Aggiorna archivio con retry e ridisegna
         try { await window.dbApi.loadArchiveRetry?.(); } catch {}
         window.renderArchiveLocal?.();
         const t = document.querySelector('[data-bs-target="#tab-archivio"]');
@@ -487,10 +519,11 @@ Totale: ${EURO(tot)}`);
     $('#btnMail')?.addEventListener('click', composeEmail);
     $('#btnWA')?.addEventListener('click', composeWhatsApp);
 
-    // File foto → coda upload
-    $('#imgInput')?.addEventListener('change', e => {
+    // File foto → coda upload + anteprima locale
+    $('#imgInput')?.addEventListener('change', async e => {
       const files = Array.from(e.target.files||[]);
       window.__elipPhotosQueue = files;
+      await renderPhotoPreview(files);
     });
 
     // Catalogo
@@ -521,27 +554,14 @@ Totale: ${EURO(tot)}`);
   }
 
   async function init(){
-    // piccoli check su plugin pdf
-    if (!window.jspdf || !window.jspdf.jsPDF) console.warn('[pdf] jsPDF non caricato (controlla <script jsPDF> in index.html)');
-    if (!('autoTable' in (window.jspdf?.jsPDF?.API || {}))) console.warn('[pdf] jsPDF-AutoTable non caricato (controlla plugin in index.html)');
-
     ensureCatalog();
     buildDatalist();
     renderCatalog('');
     fillForm();
     renderLines();
-    // Carica archivio da DB (se disponibile)
-    try {
-      if (window.dbApi?.loadArchive) {
-        await window.dbApi.loadArchive();
-      } else {
-        console.warn('[init] dbApi non disponibile (app-supabase.js non caricato?)');
-      }
-    } catch(e){ console.warn('[loadArchive] errore', e); }
+    try { if (window.dbApi?.loadArchive) await window.dbApi.loadArchive(); } catch{}
     renderArchiveTable();
-    try {
-      if (window.dbApi?.subscribeRealtime) window.dbApi.subscribeRealtime();
-    } catch(e){ console.warn('[realtime] errore', e); }
+    try { window.dbApi?.subscribeRealtime?.(); } catch{}
     bind();
   }
 
