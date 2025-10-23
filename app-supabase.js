@@ -1,8 +1,8 @@
 
-/* Preventivi ELIP — app-supabase.js (2025-10-23 PHOTOS+THUMBS+LOAD)
-   - Nessuna colonna 'photos' nel payload preventivi
-   - Upload foto + thumbnail 164x164 -> storage bucket 'photos' (path: <numero>/file.ext e <numero>/thumbs/file.jpg)
-   - loadPhotosFor(numero): legge da tabella 'photos' e ritorna thumb_url/url
+/* Preventivi ELIP — app-supabase.js (two-file pack 2025-10-23)
+   - No 'photos' column in preventivi payload
+   - Upload photo + 164x164 thumb to Storage bucket 'photos'
+   - loadArchive, loadPhotosFor, saveToSupabase
 */
 (function(){
   'use strict';
@@ -172,7 +172,6 @@
     if (!m) return null;
     const numero = m[1];
     const base = m[2];
-    // thumb path:
     const tpath = `${numero}/thumbs/${base}.jpg`;
     const { data } = supa().storage.from('photos').getPublicUrl(tpath);
     return data?.publicUrl || null;
@@ -191,19 +190,6 @@
   }
 
   async function loadArchiveRetry(){ return await withRetry(async () => await loadArchive(), 3, 300); }
-
-  function subscribeRealtime(){
-    const c = supa();
-    try {
-      c.channel('preventivi_changes')
-        .on('postgres_changes', { event:'*', schema:'public', table:'preventivi' }, () => {
-          loadArchive().then(() => {
-            if (typeof window.renderArchiveLocal === 'function') window.renderArchiveLocal();
-          });
-        })
-        .subscribe();
-    } catch (e) { console.warn('[supabase] realtime subscribe failed', e); }
-  }
 
   async function saveToSupabase(archiveAfter){
     const cur = (() => { try { return JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch { return null; } })();
@@ -242,5 +228,5 @@
     return true;
   }
 
-  window.dbApi = { supa, uploadPhoto, loadPhotosFor, loadArchive, loadArchiveRetry, subscribeRealtime, saveToSupabase };
+  window.dbApi = { supa, uploadPhoto, loadPhotosFor, loadArchive, loadArchiveRetry, saveToSupabase };
 })();
