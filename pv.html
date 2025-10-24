@@ -27,9 +27,9 @@
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
     footer { padding: 20px; text-align: center; opacity: .6; }
     .hidden { display: none !important; }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; background:#1a2030; padding:2px 6px; border-radius:6px; border:1px solid #2a3242; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.10/dist/umd/supabase.min.js"></script>
-  <script src="config.js"></script>
 </head>
 <body>
   <header>
@@ -40,6 +40,7 @@
       <div id="loading" class="small muted">Caricamento…</div>
       <div id="msg" class="small"></div>
       <div id="dbg" class="small muted" style="margin-top:6px"></div>
+      <div id="help" class="small muted" style="margin-top:8px"></div>
     </div>
 
     <div class="card hidden" id="pvBox">
@@ -79,11 +80,15 @@
   const qs = new URLSearchParams(location.search);
   const key = qs.get('pvid') || qs.get('pvno') || qs.get('id') || qs.get('pv');
   const kind = qs.get('pvid') ? 'pvid' : (qs.get('pvno') ? 'pvno' : (qs.get('id') ? 'pvid' : 'auto'));
+  const overrideUrl = qs.get('supurl') || qs.get('url');
+  const overrideAnon = qs.get('supanon') || qs.get('anon');
+  const explicitConfigPath = qs.get('config');
 
   const $ = sel => document.querySelector(sel);
   const elLoading = $('#loading');
   const elMsg = $('#msg');
   const elDbg = $('#dbg');
+  const elHelp = $('#help');
   const pvBox = $('#pvBox');
 
   function fmtDate(v){
@@ -99,29 +104,69 @@
   }
 
   function detectConfig(){
-    // 1) window.supabaseConfig = { url, anon }
+    if (overrideUrl && overrideAnon) {
+      return { url: String(overrideUrl), anon: String(overrideAnon), via: 'URL params' };
+    }
     if (window.supabaseConfig && window.supabaseConfig.url && window.supabaseConfig.anon) {
       return { url: String(window.supabaseConfig.url), anon: String(window.supabaseConfig.anon), via: 'supabaseConfig' };
     }
-    // 2) constants style
     if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
       return { url: String(window.SUPABASE_URL), anon: String(window.SUPABASE_ANON_KEY), via: 'SUPABASE_URL/ANON' };
     }
-    // 3) camelCase
     if (window.supabaseUrl && window.supabaseAnonKey) {
       return { url: String(window.supabaseUrl), anon: String(window.supabaseAnonKey), via: 'supabaseUrl/supabaseAnonKey' };
     }
-    // 4) generic object
     if (window.__SUPABASE && window.__SUPABASE.url && window.__SUPABASE.anon) {
       return { url: String(window.__SUPABASE.url), anon: String(window.__SUPABASE.anon), via: '__SUPABASE' };
     }
     return null;
   }
 
+  function loadScript(src){
+    return new Promise(function(resolve, reject){
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = function(){ reject(new Error('Impossibile caricare ' + src)); };
+      document.head.appendChild(s);
+    });
+  }
+
+  async function ensureConfigLoaded(){
+    // 1) già disponibile o override
+    let cfg = detectConfig();
+    if (cfg) return cfg;
+
+    // 2) prova a caricare config da percorso esplicito
+    const candidates = [];
+    if (explicitConfigPath) candidates.push(explicitConfigPath);
+    candidates.push('./config.js', '../config.js', '/preventivi-elip/config.js');
+
+    let lastError = null;
+    for (const src of candidates) {
+      try {
+        await loadScript(src);
+        cfg = detectConfig();
+        if (cfg) {
+          elDbg.textContent = 'Config rilevata via ' + cfg.via + ' (caricata: ' + src + ')';
+          return cfg;
+        }
+      } catch(e){
+        lastError = e;
+      }
+    }
+    // 3) se ancora nulla, mostra help
+    elDbg.textContent = 'Nessuna config rilevata.';
+    elHelp.innerHTML = 'Passa i parametri <span class="kbd">?supurl=...</span> e <span class="kbd">supanon=...</span>, ' +
+      'oppure specifica <span class="kbd">?config=percorso/del/config.js</span>. ' +
+      'Esempio: <span class="kbd">pv.html?pvid=UUID&config=./config.js</span>';
+    throw lastError || new Error('Config Supabase mancante (config.js).');
+  }
+
   async function initSupabase(){
-    const cfg = detectConfig();
-    elDbg.textContent = cfg ? ('Config rilevata via '+cfg.via) : 'Nessuna config rilevata';
+    const cfg = await ensureConfigLoaded();
     if (!cfg) throw new Error('Config Supabase mancante (config.js).');
+    elDbg.textContent = (elDbg.textContent ? elDbg.textContent + ' • ' : '') + 'via ' + cfg.via;
     return window.supabase.createClient(cfg.url, cfg.anon);
   }
 
@@ -173,13 +218,15 @@
     if (!key) {
       elLoading.classList.add('hidden');
       elMsg.innerHTML = '<span class="warn">Nessuna chiave in URL. Usa pv.html?pvid=&lt;uuid&gt; oppure pv.html?pvno=&lt;numero&gt;.</span>';
+      elHelp.innerHTML = 'Puoi anche passare i parametri <span class="kbd">supurl</span> e <span class="kbd">supanon</span>, ' +
+        'oppure <span class="kbd">config</span> per puntare al tuo config.js.';
       return;
     }
     try {
       const client = await initSupabase();
       const rec = await loadRecord(client, key);
       if (!rec) throw new Error('Preventivo non trovato.');
-      // Prepara apertura nell’app
+      // Prepara eventuale apertura nell’app
       sessionStorage.setItem('pv.deep.link.key', key);
       sessionStorage.setItem('pv.deep.link.kind', (isUUID(key) ? 'pvid' : 'pvno'));
       render(rec);
@@ -189,17 +236,17 @@
     }
   }
 
-  document.getElementById('openInAppBtn').addEventListener('click', () => {
-    location.href = './';
-  });
-
-  document.getElementById('copyLinkBtn').addEventListener('click', async () => {
-    const url = new URL(location.href);
-    try {
-      await navigator.clipboard.writeText(url.toString());
-      elMsg.textContent = 'Link copiato negli appunti.';
-    } catch(e){
-      elMsg.textContent = 'Copia non riuscita, seleziona e copia manualmente.';
+  document.addEventListener('click', function(e){
+    if (e.target && e.target.id === 'openInAppBtn') {
+      location.href = './';
+    }
+    if (e.target && e.target.id === 'copyLinkBtn') {
+      const url = new URL(location.href);
+      navigator.clipboard.writeText(url.toString()).then(() => {
+        elMsg.textContent = 'Link copiato negli appunti.';
+      }).catch(() => {
+        elMsg.textContent = 'Copia non riuscita, seleziona e copia manualmente.';
+      });
     }
   });
 
