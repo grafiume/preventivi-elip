@@ -28,7 +28,6 @@
     footer { padding: 20px; text-align: center; opacity: .6; }
     .hidden { display: none !important; }
   </style>
-  <!-- Supabase CDN (non invade l'app principale). Se esiste config.js nella repo, lo useremo. -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.10/dist/umd/supabase.min.js"></script>
   <script src="config.js"></script>
 </head>
@@ -40,6 +39,7 @@
     <div class="card" id="statusBox">
       <div id="loading" class="small muted">Caricamento…</div>
       <div id="msg" class="small"></div>
+      <div id="dbg" class="small muted" style="margin-top:6px"></div>
     </div>
 
     <div class="card hidden" id="pvBox">
@@ -66,7 +66,7 @@
       </div>
 
       <div class="small muted" style="margin-top:8px">
-        Questo è un viewer **separato**: non tocca l’index e non crea preventivi nuovi.
+        Questo è un viewer separato: non tocca l’index e non crea preventivi nuovi.
       </div>
     </div>
   </main>
@@ -81,9 +81,9 @@
   const kind = qs.get('pvid') ? 'pvid' : (qs.get('pvno') ? 'pvno' : (qs.get('id') ? 'pvid' : 'auto'));
 
   const $ = sel => document.querySelector(sel);
-  const elStatus = $('#statusBox');
   const elLoading = $('#loading');
   const elMsg = $('#msg');
+  const elDbg = $('#dbg');
   const pvBox = $('#pvBox');
 
   function fmtDate(v){
@@ -98,18 +98,31 @@
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v||''));
   }
 
-  async function initSupabase(){
-    // Prova da config.js
-    let url = (window.SUPABASE_URL || window.supabaseUrl || '').trim();
-    let anon = (window.SUPABASE_ANON_KEY || window.supabaseAnonKey || '').trim();
-    if (!url || !anon) {
-      // fallback: prova a leggere da window.__SUPABASE se la tua app la usa
-      if (window.__SUPABASE && window.__SUPABASE.url && window.__SUPABASE.anon) {
-        url = window.__SUPABASE.url; anon = window.__SUPABASE.anon;
-      }
+  function detectConfig(){
+    // 1) window.supabaseConfig = { url, anon }
+    if (window.supabaseConfig && window.supabaseConfig.url && window.supabaseConfig.anon) {
+      return { url: String(window.supabaseConfig.url), anon: String(window.supabaseConfig.anon), via: 'supabaseConfig' };
     }
-    if (!url || !anon) throw new Error('Config Supabase mancante (config.js).');
-    return window.supabase.createClient(url, anon);
+    // 2) constants style
+    if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY) {
+      return { url: String(window.SUPABASE_URL), anon: String(window.SUPABASE_ANON_KEY), via: 'SUPABASE_URL/ANON' };
+    }
+    // 3) camelCase
+    if (window.supabaseUrl && window.supabaseAnonKey) {
+      return { url: String(window.supabaseUrl), anon: String(window.supabaseAnonKey), via: 'supabaseUrl/supabaseAnonKey' };
+    }
+    // 4) generic object
+    if (window.__SUPABASE && window.__SUPABASE.url && window.__SUPABASE.anon) {
+      return { url: String(window.__SUPABASE.url), anon: String(window.__SUPABASE.anon), via: '__SUPABASE' };
+    }
+    return null;
+  }
+
+  async function initSupabase(){
+    const cfg = detectConfig();
+    elDbg.textContent = cfg ? ('Config rilevata via '+cfg.via) : 'Nessuna config rilevata';
+    if (!cfg) throw new Error('Config Supabase mancante (config.js).');
+    return window.supabase.createClient(cfg.url, cfg.anon);
   }
 
   async function loadRecord(client, key){
@@ -141,7 +154,7 @@
     linesHost.innerHTML = '';
     let arr = [];
     try { arr = Array.isArray(rec.linee) ? rec.linee : JSON.parse(rec.linee||'[]'); } catch(e){ arr = []; }
-    arr.forEach((ln, i) => {
+    arr.forEach((ln) => {
       const row = document.createElement('div');
       row.className = 'line';
       row.innerHTML = `
@@ -176,12 +189,11 @@
     }
   }
 
-  $('#openInAppBtn').addEventListener('click', () => {
-    // Reindirizza alla home app conservando sessionStorage; l’app potrà leggere pv.deep.link.key
+  document.getElementById('openInAppBtn').addEventListener('click', () => {
     location.href = './';
   });
 
-  $('#copyLinkBtn').addEventListener('click', async () => {
+  document.getElementById('copyLinkBtn').addEventListener('click', async () => {
     const url = new URL(location.href);
     try {
       await navigator.clipboard.writeText(url.toString());
