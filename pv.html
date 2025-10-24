@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preventivo • Viewer</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, sans-serif; margin: 0; background: #0f1115; color: #eaeef2; }
+    header { padding: 14px 16px; background: #161a22; border-bottom: 1px solid #222835; }
+    header h1 { margin: 0; font-size: 18px; }
+    main { max-width: 920px; margin: 0 auto; padding: 18px; }
+    .card { background: #151922; border: 1px solid #222835; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+    .row { display: grid; grid-template-columns: 1fr 2fr; gap: 8px 16px; }
+    .label { opacity: .7; }
+    .value { font-weight: 600; word-break: break-word; }
+    .lines { margin-top: 12px; border-top: 1px dashed #2a3242; padding-top: 12px; }
+    .line { display: grid; grid-template-columns: 52px 1fr 110px 90px; gap: 8px; padding: 6px 0; border-bottom: 1px dotted #263045; }
+    .line:last-child { border-bottom: 0; }
+    .small { font-size: 12px; opacity: .8; }
+    .btns { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+    button, a.btn { appearance: none; border: 1px solid #2a3242; background: #1d2330; color: #eaeef2; padding: 10px 14px; border-radius: 10px; text-decoration: none; cursor: pointer; }
+    button.primary, a.btn.primary { background: #ff7a00; color: #111; border-color: #ff7a00; font-weight: 700; }
+    .warn { color: #ffb703; }
+    .muted { opacity: .65; }
+    .err { color: #ff6b6b; }
+    .ok { color: #7bd88f; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    footer { padding: 20px; text-align: center; opacity: .6; }
+    .hidden { display: none !important; }
+  </style>
+  <!-- Supabase CDN (non invade l'app principale). Se esiste config.js nella repo, lo useremo. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.47.10/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Viewer Preventivo (solo lettura)</h1>
+  </header>
+  <main>
+    <div class="card" id="statusBox">
+      <div id="loading" class="small muted">Caricamento…</div>
+      <div id="msg" class="small"></div>
+    </div>
+
+    <div class="card hidden" id="pvBox">
+      <div class="row">
+        <div class="label">Numero</div><div class="value" id="pvNumero"></div>
+        <div class="label">Cliente</div><div class="value" id="pvCliente"></div>
+        <div class="label">Articolo</div><div class="value" id="pvArticolo"></div>
+        <div class="label">Stato</div><div class="value" id="pvStato"></div>
+        <div class="label">Data invio</div><div class="value" id="pvInvio"></div>
+        <div class="label">Data accettazione</div><div class="value" id="pvAcc"></div>
+        <div class="label">Scadenza</div><div class="value" id="pvScad"></div>
+        <div class="label">Imponibile</div><div class="value" id="pvImp"></div>
+        <div class="label">Totale</div><div class="value" id="pvTot"></div>
+      </div>
+
+      <div class="lines">
+        <div class="small muted mono">Linee</div>
+        <div id="pvLines"></div>
+      </div>
+
+      <div class="btns">
+        <button class="primary" id="openInAppBtn">Apri nell’app</button>
+        <button id="copyLinkBtn">Copia link di questo preventivo</button>
+      </div>
+
+      <div class="small muted" style="margin-top:8px">
+        Questo è un viewer **separato**: non tocca l’index e non crea preventivi nuovi.
+      </div>
+    </div>
+  </main>
+  <footer class="small">
+    Viewer statico – funziona su Mac, iPhone, Android. Nessuna modifica a index.html
+  </footer>
+
+<script>
+(function(){
+  const qs = new URLSearchParams(location.search);
+  const key = qs.get('pvid') || qs.get('pvno') || qs.get('id') || qs.get('pv');
+  const kind = qs.get('pvid') ? 'pvid' : (qs.get('pvno') ? 'pvno' : (qs.get('id') ? 'pvid' : 'auto'));
+
+  const $ = sel => document.querySelector(sel);
+  const elStatus = $('#statusBox');
+  const elLoading = $('#loading');
+  const elMsg = $('#msg');
+  const pvBox = $('#pvBox');
+
+  function fmtDate(v){
+    if (!v) return '';
+    const d = new Date(v);
+    if (isNaN(d)) return String(v);
+    const pad = n => String(n).padStart(2,'0');
+    return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+d.getFullYear();
+  }
+
+  function isUUID(v){
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v||''));
+  }
+
+  async function initSupabase(){
+    // Prova da config.js
+    let url = (window.SUPABASE_URL || window.supabaseUrl || '').trim();
+    let anon = (window.SUPABASE_ANON_KEY || window.supabaseAnonKey || '').trim();
+    if (!url || !anon) {
+      // fallback: prova a leggere da window.__SUPABASE se la tua app la usa
+      if (window.__SUPABASE && window.__SUPABASE.url && window.__SUPABASE.anon) {
+        url = window.__SUPABASE.url; anon = window.__SUPABASE.anon;
+      }
+    }
+    if (!url || !anon) throw new Error('Config Supabase mancante (config.js).');
+    return window.supabase.createClient(url, anon);
+  }
+
+  async function loadRecord(client, key){
+    let rec = null;
+    if (kind === 'pvid' || (kind==='auto' && isUUID(key))) {
+      const r1 = await client.from('preventivi').select('*').eq('id', key).maybeSingle();
+      if (!r1.error && r1.data) rec = r1.data;
+    }
+    if (!rec) {
+      const r2 = await client.from('preventivi').select('*').eq('numero', key).maybeSingle();
+      if (!r2.error && r2.data) rec = r2.data;
+    }
+    return rec;
+  }
+
+  function render(rec){
+    pvBox.classList.remove('hidden');
+    $('#pvNumero').textContent = rec.numero || '';
+    $('#pvCliente').textContent = rec.cliente || '';
+    $('#pvArticolo').textContent = rec.articolo || '';
+    $('#pvStato').textContent = rec.stato || '';
+    $('#pvInvio').textContent = fmtDate(rec.data_invio);
+    $('#pvAcc').textContent = fmtDate(rec.data_accettazione);
+    $('#pvScad').textContent = fmtDate(rec.data_scadenza);
+    $('#pvImp').textContent = typeof rec.imponibile === 'number' ? rec.imponibile.toFixed(2) : (rec.imponibile || '');
+    $('#pvTot').textContent = typeof rec.totale === 'number' ? rec.totale.toFixed(2) : (rec.totale || '');
+
+    const linesHost = $('#pvLines');
+    linesHost.innerHTML = '';
+    let arr = [];
+    try { arr = Array.isArray(rec.linee) ? rec.linee : JSON.parse(rec.linee||'[]'); } catch(e){ arr = []; }
+    arr.forEach((ln, i) => {
+      const row = document.createElement('div');
+      row.className = 'line';
+      row.innerHTML = `
+        <div class="mono small">${(ln.code||'').toString()}</div>
+        <div>${(ln.desc||'').toString()}</div>
+        <div class="mono small">€ ${(Number(ln.price||0)).toFixed(2)}</div>
+        <div class="mono small">${(ln.doneDate||'').toString()}</div>`;
+      linesHost.appendChild(row);
+    });
+
+    elLoading.classList.add('hidden');
+    elMsg.innerHTML = `<span class="ok">Caricato</span> — <span class="mono">${rec.id}</span>`;
+  }
+
+  async function boot(){
+    if (!key) {
+      elLoading.classList.add('hidden');
+      elMsg.innerHTML = '<span class="warn">Nessuna chiave in URL. Usa pv.html?pvid=&lt;uuid&gt; oppure pv.html?pvno=&lt;numero&gt;.</span>';
+      return;
+    }
+    try {
+      const client = await initSupabase();
+      const rec = await loadRecord(client, key);
+      if (!rec) throw new Error('Preventivo non trovato.');
+      // Prepara apertura nell’app
+      sessionStorage.setItem('pv.deep.link.key', key);
+      sessionStorage.setItem('pv.deep.link.kind', (isUUID(key) ? 'pvid' : 'pvno'));
+      render(rec);
+    } catch(e){
+      elLoading.classList.add('hidden');
+      elMsg.innerHTML = '<span class="err">'+ (e && e.message ? e.message : e) +'</span>';
+    }
+  }
+
+  $('#openInAppBtn').addEventListener('click', () => {
+    // Reindirizza alla home app conservando sessionStorage; l’app potrà leggere pv.deep.link.key
+    location.href = './';
+  });
+
+  $('#copyLinkBtn').addEventListener('click', async () => {
+    const url = new URL(location.href);
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      elMsg.textContent = 'Link copiato negli appunti.';
+    } catch(e){
+      elMsg.textContent = 'Copia non riuscita, seleziona e copia manualmente.';
+    }
+  });
+
+  boot();
+})();
+</script>
+</body>
+</html>
