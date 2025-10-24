@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reindirizzamento…</title>
+  <script>
+  (function(){
+    var base = '/preventivi-elip/';
+    var path = location.pathname;
+    var tail = path.indexOf(base) === 0 ? path.slice(base.length) : path.replace(/^\//,'');
+    var parts = tail.split('/').filter(Boolean);
+    var key = '';
+    if (parts.length >= 2 && (parts[0] === 'pvid' || parts[0] === 'pvno')) {
+      key = decodeURIComponent(parts.slice(1).join('/'));
+      try {
+        sessionStorage.setItem('pv.deep.link.key', key);
+        sessionStorage.setItem('pv.deep.link.kind', parts[0]);
+      } catch(e){}
+      var dest = base + '#'+ parts[0] +'/'+ encodeURIComponent(key);
+      location.replace(dest);
+    } else {
+      location.replace(base);
+    }
+  })();
+  </script>
+</head>
+<body>Reindirizzamento…</body>
+</html>
