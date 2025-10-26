@@ -12,10 +12,7 @@
   var p = new URLSearchParams(location.search);
   var key = p.get('pvid') || p.get('pvno') || p.get('id') || p.get('pv');
   var kind = p.get('pvid') ? 'pvid' : (p.get('pvno') ? 'pvno' : 'auto');
-  if (!key) {
-    document.write('Manca parametro pvid/pvno.');
-    return;
-  }
+  if (!key) { document.write('Manca parametro pvid/pvno.'); return; }
   try {
     localStorage.setItem('preventivo.open.request', JSON.stringify({ key, kind, ts: Date.now() }));
   } catch(e){}
