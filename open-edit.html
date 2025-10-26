@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apri preventivo…</title>
+  <style>body{font-family:system-ui,sans-serif;padding:24px}a{color:#0b69ff}</style>
+</head>
+<body>
+<script>
+(function(){
+  // Leggi ?pvid=... oppure ?pvno=...
+  var p = new URLSearchParams(location.search);
+  var key = p.get('pvid') || p.get('pvno') || p.get('id') || p.get('pv');
+  var kind = p.get('pvid') ? 'pvid' : (p.get('pvno') ? 'pvno' : 'auto');
+  if (!key) {
+    document.write('Manca parametro pvid/pvno.');
+    return;
+  }
+  // Salva una richiesta per l'app principale
+  try {
+    localStorage.setItem('preventivo.open.request', JSON.stringify({
+      key: key, kind: kind, ts: Date.now()
+    }));
+  } catch(e){}
+  // Vai all'app principale
+  location.replace('./');
+})();
+</script>
+Reindirizzamento… Se non avviene, <a href="./">clicca qui</a>.
+</body>
+</html>
