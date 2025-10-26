@@ -1,6 +1,8 @@
 // intake-edit.js
-// Inserisci questo file come PRIMO <script> nello <head> di index.html, PRIMA di qualunque altro JS.
-// Scopo: se esiste una richiesta in localStorage, impedisce l'auto-NUOVO e apre il preventivo target.
+// Inserisci questo file come PRIMO <script> nello <head> di preventivi-elip/index.html.
+//
+// Effetto: se troviamo una richiesta in localStorage (impostata da open-edit.html),
+// blocchiamo l'auto-NUOVO e apriamo direttamente il preventivo (per id o per numero).
 
 (function(){
   if (window.__INTAKE_EDIT_INSTALLED__) return;
@@ -12,8 +14,7 @@
       if (!raw) return null;
       var obj = JSON.parse(raw);
       if (!obj || !obj.key) return null;
-      // scade dopo 5 minuti
-      if (Date.now() - (obj.ts||0) > 5*60*1000) return null;
+      if (Date.now() - (obj.ts||0) > 5*60*1000) return null; // 5 minuti
       return obj;
     } catch(e){ return null; }
   }
@@ -22,17 +23,11 @@
   if (req) {
     // Evita la creazione automatica
     window.__URL_INTENT_HAS_TARGET__ = true;
-    // Espone anche in sessionStorage per compat
+    // Espone anche in sessionStorage per compatibilità
     sessionStorage.setItem('pv.deep.link.key', req.key);
     sessionStorage.setItem('pv.deep.link.kind', req.kind || 'auto');
   }
 
-  // Piccolo helper per i tuoi punti "Nuovo"
-  window.shouldAutoNew = function(){
-    return !window.__URL_INTENT_HAS_TARGET__;
-  };
-
-  // Quando l'app è pronta, apri il record
   function isUUID(v){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v||'')); }
 
   async function openNow(){
@@ -45,7 +40,6 @@
         window.openPreventivoByIdOrNumero(key);
         opened = true;
       } else if (typeof window.__openPreventivo === 'function' && window.supabase) {
-        // carica record e passa oggetto completo
         let rec = null;
         if (isUUID(key)) {
           var r1 = await window.supabase.from('preventivi').select('*').eq('id', key).maybeSingle();
@@ -62,16 +56,12 @@
       }
     } catch(e){ /* ignore */ }
 
-    // Pulisci la richiesta per evitare ri-aperture
     try { localStorage.removeItem('preventivo.open.request'); } catch(e){}
-
     if (!opened) {
-      // come fallback, lascia la chiave globale per altri loader
-      window.__PVID_TO_OPEN__ = key;
+      window.__PVID_TO_OPEN__ = key; // fallback per loader custom
     }
   }
 
-  // Attendi che supabase sia disponibile o che il DOM sia pronto, poi prova
   (function waitReady(){
     if (!req) return;
     if (window.supabase || typeof window.openPreventivoByIdOrNumero === 'function' || typeof window.__openPreventivo === 'function') {

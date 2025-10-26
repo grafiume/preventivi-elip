@@ -9,7 +9,6 @@
 <body>
 <script>
 (function(){
-  // Leggi ?pvid=... oppure ?pvno=...
   var p = new URLSearchParams(location.search);
   var key = p.get('pvid') || p.get('pvno') || p.get('id') || p.get('pv');
   var kind = p.get('pvid') ? 'pvid' : (p.get('pvno') ? 'pvno' : 'auto');
@@ -17,13 +16,9 @@
     document.write('Manca parametro pvid/pvno.');
     return;
   }
-  // Salva una richiesta per l'app principale
   try {
-    localStorage.setItem('preventivo.open.request', JSON.stringify({
-      key: key, kind: kind, ts: Date.now()
-    }));
+    localStorage.setItem('preventivo.open.request', JSON.stringify({ key, kind, ts: Date.now() }));
   } catch(e){}
-  // Vai all'app principale
   location.replace('./');
 })();
 </script>
