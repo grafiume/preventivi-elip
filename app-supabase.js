@@ -1,5 +1,4 @@
-
-/* Preventivi ELIP — app-supabase.js (FINAL v4c) */
+/* Preventivi ELIP — app-supabase.js (FINAL v4c + link columns + client getter) */
 (function(){
   'use strict';
   let client = null;
@@ -191,12 +190,45 @@
   }
   async function loadArchiveRetry(){ return await withRetry(async () => await loadArchive(), 3, 300); }
 
+  async function updateLinkColumnsIfPresent(rec){
+    try {
+      const c = supa();
+      const id = rec?.id;
+      const numero = rec?.numero;
+      if (!id && !numero) return;
+
+      // Costruisci link "universali" (entrambi validi con il nuovo app.js)
+      const base = 'https://grafiume.github.io/preventivi-elip/';
+      const url_by_id  = id     ? `${base}?pvid=${encodeURIComponent(id)}` : null;
+      const url_by_num = numero ? `${base}?pvno=${encodeURIComponent(numero)}` : null;
+
+      // Preferisci l'UUID per compatibilità con vincoli records_* e futura espansione
+      const preventivo_url = url_by_id || url_by_num;
+      const preventivo_url_edit = id
+        ? `${base}open-edit.html?pvid=${encodeURIComponent(id)}`
+        : `${base}open-edit.html?pvno=${encodeURIComponent(numero)}`;
+
+      // Prova a fare update; se le colonne non esistono, ignora l'errore
+      const { error } = await c.from('preventivi')
+        .update({ preventivo_url, preventivo_url_edit })
+        .eq('id', id || rec.id);
+      if (error && !(String(error.message||'').includes('column') || String(error.code||'')==='42703')) {
+        console.warn('[preventivi link columns warn]', error);
+      }
+    } catch (e) {
+      console.warn('[updateLinkColumnsIfPresent]', e?.message||e);
+    }
+  }
+
   async function saveToSupabase(goArchive){
     let cur = null; try { cur = JSON.parse(localStorage.getItem('elip_current') || 'null'); } catch {}
     if (!cur) { alert('Nessun preventivo in memoria.'); return false; }
     const payload = buildPayload(cur);
-    const { error } = await upsertPreventivoByNumero(payload);
+    const { data, error } = await upsertPreventivoByNumero(payload);
     if (error) { alert('Errore salvataggio: ' + (error?.message || JSON.stringify(error))); return false; }
+
+    // Aggiorna le colonne link se esistono (non blocca il salvataggio)
+    if (data) { updateLinkColumnsIfPresent(data).catch(()=>{}); }
 
     const queueFiles = (typeof window.__elipGetUploadFiles === 'function')
       ? window.__elipGetUploadFiles()
@@ -220,5 +252,11 @@
     return true;
   }
 
-  window.dbApi = { supa, uploadPhoto, loadPhotosFor, deletePhoto, loadArchive, loadArchiveRetry, saveToSupabase };
+  // Espone API + getter del client (per app.js deep-link)
+  window.dbApi = {
+    supa,
+    get supabase(){ return supa(); },
+    uploadPhoto, loadPhotosFor, deletePhoto,
+    loadArchive, loadArchiveRetry, saveToSupabase
+  };
 })();
