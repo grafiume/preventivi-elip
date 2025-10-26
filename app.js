@@ -1,10 +1,105 @@
-
-/* Preventivi ELIP — app.js (FINAL v4c) */
+/* Preventivi ELIP — app.js (FINAL v4c + deeplink support) */
 (function(){
   'use strict';
   const $ = (s, r=document) => r.querySelector(s);
   const EURO = n => (n||0).toLocaleString('it-IT', { style:'currency', currency:'EUR' });
   const DTIT = s => s ? new Date(s).toLocaleDateString('it-IT') : '';
+
+  /* =======================
+     DEEPLINK SUPPORT (NEW)
+     ======================= */
+  function isUUID(v){ return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v||'')); }
+  function readDeepLinkKey(){
+    try {
+      const s = sessionStorage.getItem('pv.deep.link.key');
+      if (s) return s;
+    } catch {}
+    try {
+      const raw = localStorage.getItem('preventivo.open.request');
+      if (raw){
+        const obj = JSON.parse(raw);
+        if (obj && obj.key && (Date.now() - (obj.ts||0) < 5*60*1000)) return obj.key;
+      }
+    } catch {}
+    try {
+      const qs = new URLSearchParams(location.search);
+      const k = qs.get('pvid') || qs.get('pvno') || qs.get('id') || qs.get('pv');
+      if (k) return k;
+    } catch {}
+    return null;
+  }
+  const __deepKey__ = readDeepLinkKey();
+  if (__deepKey__) {
+    window.__URL_INTENT_HAS_TARGET__ = true;     // usato per bloccare l'auto-Nuovo
+    window.__DEEPLINK_LOADING__ = true;          // finché non apriamo quel record
+  }
+
+  // client Supabase on-demand (solo se serve per aprire per ID/numero)
+  async function getSupabaseClient(){
+    // se l'app l'ha già creato altrove (es. in app-supabase.js), usa quello
+    if (window.__supabaseClient) return window.__supabaseClient;
+    if (window.dbApi && window.dbApi.supabase) return (window.__supabaseClient = window.dbApi.supabase);
+    // fallback: crealo qui se abbiamo la lib e la config
+    if (window.supabase && window.supabase.createClient && window.supabaseConfig){
+      window.__supabaseClient = window.supabase.createClient(window.supabaseConfig.url, window.supabaseConfig.anon);
+      return window.__supabaseClient;
+    }
+    return null;
+  }
+
+  function mapRecordToCur(rec){
+    // usa numero come id "umano" (coerente con openFromArchive)
+    return {
+      id: rec.numero || rec.id || '',
+      createdAt: rec.created_at || new Date().toISOString(),
+      cliente: rec.cliente || '',
+      articolo: rec.articolo || '',
+      ddt: rec.ddt || '',
+      telefono: rec.telefono || '',
+      email: rec.email || '',
+      dataInvio: rec.data_invio || '',
+      dataAcc: rec.data_accettazione || '',
+      dataScad: rec.data_scadenza || '',
+      note: rec.note || '',
+      lines: (function(x){ try{ return Array.isArray(x)?x:JSON.parse(x||'[]'); }catch{return [];} })(rec.linee)
+    };
+  }
+
+  // Hook globale che intake-edit.js può chiamare
+  window.openPreventivoByIdOrNumero = async function(key){
+    try {
+      const client = await getSupabaseClient();
+      if (!client) { console.warn('[openPreventivoByIdOrNumero] no supabase client'); return; }
+
+      let rec = null;
+      if (isUUID(key)){
+        const r1 = await client.from('preventivi').select('*').eq('id', key).maybeSingle();
+        if (!r1.error && r1.data) rec = r1.data;
+      }
+      if (!rec){
+        const r2 = await client.from('preventivi').select('*').eq('numero', key).maybeSingle();
+        if (!r2.error && r2.data) rec = r2.data;
+      }
+      if (!rec){ console.warn('[openPreventivoByIdOrNumero] not found', key); return; }
+
+      const cur = mapRecordToCur(rec);
+      setCurLight(cur);
+      fillForm();
+      renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
+
+      // carica foto dal server se la tua dbApi lo supporta
+      try { window.dbApi?.loadPhotosFor?.(cur.id).then(list => setServerThumbs(list)); } catch {}
+
+      // passa alla tab editor
+      const btn = document.querySelector('[data-bs-target="#tab-editor"]');
+      if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
+
+      window.__DEEPLINK_LOADING__ = false;
+      try { localStorage.removeItem('preventivo.open.request'); } catch {}
+    } catch (e) {
+      console.error('[openPreventivoByIdOrNumero] error', e);
+    }
+  };
 
   // ===== Catalogo =====
   const DEFAULT_CATALOG=[
@@ -76,6 +171,10 @@
   function initCur(){
     let cur = getCur();
     if (!cur) {
+      // 🔒 Se stiamo aprendo da deep-link, NON creare un nuovo preventivo ora
+      if (window.__URL_INTENT_HAS_TARGET__ === true && window.__DEEPLINK_LOADING__ === true) {
+        return { id:'', createdAt:'', cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
+      }
       cur = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'' , dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
       setCurLight(cur);
     }
@@ -809,9 +908,18 @@ Totale: ${EURO(tot)}`);
       ensureCatalog();
       buildDatalist();
       renderCatalog('');
-      initCur();
-      fillForm();
-      renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
+
+      // 🔒 Se stiamo aprendo da deep-link, NON creare "nuovo" qui
+      const key = __deepKey__;
+      if (key) {
+        // Evita di creare cur di default; apri il record target
+        await window.openPreventivoByIdOrNumero(key);
+      } else {
+        initCur();
+        fillForm();
+        renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
+      }
+
       if (window.dbApi?.loadArchive) await window.dbApi.loadArchive();
       renderArchiveTable();
       ensureInScadenzaButton();
