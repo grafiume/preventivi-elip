@@ -1,5 +1,4 @@
 <!doctype html>
-
 <html lang="it">
 <head>
   <meta charset="utf-8">
@@ -180,38 +179,13 @@
 <!-- CSS (una sola volta) -->
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="styles-photos.css">
-  <!-- REDIRECT PRIMA DELL’APP: da ?pvid / ?pvno a rotta SPA editabile, con config -->
-<script>
-(function(){
-  try {
-    var q = new URLSearchParams(location.search);
-    var pvid = q.get('pvid') || q.get('id') || q.get('pv') || '';
-    var pvno = q.get('pvno') || q.get('numero') || '';
-    var cfg  = q.get('config') || './config.js';   // forza la config
-    if (!pvid && !pvno) return;                     // niente da fare
 
-    // base della tua app (senza index.html)
-    var base = location.origin + location.pathname.replace(/index\.html?$/i, '');
-    var target = base + '?config=' + encodeURIComponent(cfg)
-               + (pvid ? '#/pvid/' + encodeURIComponent(pvid)
-                       : '#/pvno/' + encodeURIComponent(pvno));
-
-    // reindirizzo nella STESSA scheda, prima che l’app si avvii
-    location.replace(target);
-  } catch (e) { console && console.warn('[pre-redirect]', e); }
-})();
-</script>
-
-<script src="./query-to-hash.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 
-<script src="./config.js"></script>
-<script src="./query-to-hash.js"></script>
-<!-- poi i tuoi script dell'app -->
-
+<script src="config.js" defer></script>
 <script src="app-supabase.js" defer></script>
 <script src="app.js" defer></script>
 
