@@ -385,7 +385,7 @@
     };
     setCurLight(cur);
     fillForm();
-    try { const v=(initCur()?.schedaLink||''); const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {}
+    try { let v=(initCur()?.schedaLink||''); if(v && !/^https?:\/\//i.test(v)) v='https://'+v; const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {}
     renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
     try { window.dbApi?.loadPhotosFor(cur.id).then(list => setServerThumbs(list)); } catch {}
     const btn = document.querySelector('[data-bs-target="#tab-editor"]');
@@ -656,7 +656,11 @@ Totale: ${EURO(tot)}`);
     c.dataInvio = ($('#dataInvio')?.value || '').trim();
     c.dataAcc   = ($('#dataAcc')?.value || '').trim();
     c.dataScad  = ($('#dataScad')?.value || '').trim();
-    c.schedaLink = ($('#schedaLink')?.value || '').trim();
+    (function(){
+      let v = ($('#schedaLink')?.value || '').trim();
+      if (v && !/^https?:\/\//i.test(v)) v = 'https://' + v;
+      c.schedaLink = v;
+    })();
     c.note      = ($('#note')?.value || '');
     setCurLight(c);
     return c;
@@ -672,7 +676,7 @@ Totale: ${EURO(tot)}`);
     const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
     ids.forEach(id => { const el = $('#'+id); if (el) el.value = ''; });
     fillForm();
-    try { const v=(initCur()?.schedaLink||''); const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {} renderLines(); updateDeadlineUI(); updateDaysLeftBanner(); focusFirstField();
+    try { let v=(initCur()?.schedaLink||''); if(v && !/^https?:\/\//i.test(v)) v='https://'+v; const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {} renderLines(); updateDeadlineUI(); updateDaysLeftBanner(); focusFirstField();
   }
 
   function toastSaved(){
@@ -736,7 +740,7 @@ Totale: ${EURO(tot)}`);
       setCurLight({ id:c.id, createdAt:c.createdAt, cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', schedaLink:'', note:'', lines:[] });
       if (typeof window.__elipResetPhotos === 'function') window.__elipResetPhotos();
       fillForm();
-    try { const v=(initCur()?.schedaLink||''); const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {} renderLines(); updateDeadlineUI(); updateDaysLeftBanner(); focusFirstField();
+    try { let v=(initCur()?.schedaLink||''); if(v && !/^https?:\/\//i.test(v)) v='https://'+v; const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {} renderLines(); updateDeadlineUI(); updateDaysLeftBanner(); focusFirstField();
       const btn = document.querySelector('[data-bs-target="#tab-editor"]');
       if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
     });
@@ -816,7 +820,7 @@ Totale: ${EURO(tot)}`);
       renderCatalog('');
       initCur();
       fillForm();
-    try { const v=(initCur()?.schedaLink||''); const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {}
+    try { let v=(initCur()?.schedaLink||''); if(v && !/^https?:\/\//i.test(v)) v='https://'+v; const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {}
       renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
       if (window.dbApi?.loadArchive) await window.dbApi.loadArchive();
       renderArchiveTable();
