@@ -76,7 +76,7 @@
   function initCur(){
     let cur = getCur();
     if (!cur) {
-      cur = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'' , dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
+      cur = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'' , dataInvio:'', dataAcc:'', dataScad:'', schedaLink:'', note:'', lines:[] };
       setCurLight(cur);
     }
     return cur;
@@ -379,11 +379,13 @@
       dataInvio: r.data_invio || '',
       dataAcc: r.data_accettazione || '',
       dataScad: r.data_scadenza || '',
+      schedaLink: r.scheda_link || '',
       note: r.note || '',
       lines: r.linee || []
     };
     setCurLight(cur);
     fillForm();
+    try { const v=(initCur()?.schedaLink||''); const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {}
     renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
     try { window.dbApi?.loadPhotosFor(cur.id).then(list => setServerThumbs(list)); } catch {}
     const btn = document.querySelector('[data-bs-target="#tab-editor"]');
@@ -471,12 +473,12 @@
     ctx.fillText(`Scadenza: ${DTIT(c.dataScad)||''}`, 40, 180);
     ctx.font = '12px Arial';
     let y = 210;
-    const maxRows = detail ? 12 : 0;
+    const maxRows = detail ? 12 : 6;
     const lines = (c.lines||[]).slice(0, maxRows);
     if (lines.length){
       ctx.fillText('Righe lavorazione:', 40, y); y+=18;
       for (const r of lines){
-        const t = detail ? `${r.code||''}  ${String(r.desc||'').slice(0,60)}  x${r.qty||0}  €${(+r.price||0).toFixed(2)}` : `${r.code||''}  ${String(r.desc||'').slice(0,60)}`;
+        const t = `${r.code||''}  ${String(r.desc||'').slice(0,60)}  x${r.qty||0}  €${(+r.price||0).toFixed(2)}`;
         ctx.fillText(t, 40, y); y+=16;
       }
       if ((c.lines||[]).length > maxRows){
@@ -654,6 +656,7 @@ Totale: ${EURO(tot)}`);
     c.dataInvio = ($('#dataInvio')?.value || '').trim();
     c.dataAcc   = ($('#dataAcc')?.value || '').trim();
     c.dataScad  = ($('#dataScad')?.value || '').trim();
+    c.schedaLink = ($('#schedaLink')?.value || '').trim();
     c.note      = ($('#note')?.value || '');
     setCurLight(c);
     return c;
@@ -663,12 +666,13 @@ Totale: ${EURO(tot)}`);
     if (el) { el.focus(); try{ el.select && el.select(); }catch{} }
   }
   function clearEditorToNew(){
-    const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] };
+    const fresh = { id: nextNumero(), createdAt: new Date().toISOString(), cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', schedaLink:'', note:'', lines:[] };
     setCurLight(fresh);
     if (typeof window.__elipResetPhotos === 'function') window.__elipResetPhotos();
     const ids = ['cliente','articolo','ddt','telefono','email','dataInvio','dataAcc','dataScad','note'];
     ids.forEach(id => { const el = $('#'+id); if (el) el.value = ''; });
-    fillForm(); renderLines(); updateDeadlineUI(); updateDaysLeftBanner(); focusFirstField();
+    fillForm();
+    try { const v=(initCur()?.schedaLink||''); const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {} renderLines(); updateDeadlineUI(); updateDaysLeftBanner(); focusFirstField();
   }
 
   function toastSaved(){
@@ -729,9 +733,10 @@ Totale: ${EURO(tot)}`);
     $('#btnClear')?.addEventListener('click', (e)=>{
       e.preventDefault();
       const c = initCur();
-      setCurLight({ id:c.id, createdAt:c.createdAt, cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', note:'', lines:[] });
+      setCurLight({ id:c.id, createdAt:c.createdAt, cliente:'', articolo:'', ddt:'', telefono:'', email:'', dataInvio:'', dataAcc:'', dataScad:'', schedaLink:'', note:'', lines:[] });
       if (typeof window.__elipResetPhotos === 'function') window.__elipResetPhotos();
-      fillForm(); renderLines(); updateDeadlineUI(); updateDaysLeftBanner(); focusFirstField();
+      fillForm();
+    try { const v=(initCur()?.schedaLink||''); const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {} renderLines(); updateDeadlineUI(); updateDaysLeftBanner(); focusFirstField();
       const btn = document.querySelector('[data-bs-target="#tab-editor"]');
       if (btn) { try { new bootstrap.Tab(btn).show(); } catch { btn.click(); } }
     });
@@ -811,6 +816,7 @@ Totale: ${EURO(tot)}`);
       renderCatalog('');
       initCur();
       fillForm();
+    try { const v=(initCur()?.schedaLink||''); const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {}
       renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
       if (window.dbApi?.loadArchive) await window.dbApi.loadArchive();
       renderArchiveTable();

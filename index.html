@@ -71,29 +71,22 @@
                 <div class="col-md-4"><label class="form-label">Email</label><input id="email" class="form-control" type="email"></div>
                 <div class="col-md-4"><label class="form-label">Data invio</label><input id="dataInvio" class="form-control" type="date"></div>
                 <div class="col-md-4"><label class="form-label">Data accettazione <span id="okPill" class="acc-pill acc-no ms-2">● NO</span></label><input id="dataAcc" class="form-control" type="date"></div>
-                <div class="col-md-4"><label class="form-label">Scadenza lavori</label><input id="dataScad"
-                <div class="col-xl-3 d-none d-xl-block text-end">
-                  <label class="form-label">Link Scheda Officina</label>
-                  <div class="input-group">
-                    <input id="schedaLink" class="form-control" type="url" placeholder="https://…">
-                    <a id="openSchedaLink" class="btn btn-outline-secondary" target="_blank" rel="noopener">Apri</a>
-                  </div>
-                </div>
- class="form-control" type="date"></div>
+                <div class="col-md-4"><label class="form-label">Scadenza lavori</label><input id="dataScad" class="form-control" type="date"></div>
               </div>
             </div>
           </div>
 
           
-              <div class="row g-2 mt-2 d-xl-none">
-                <div class="col-md-6 ms-auto">
-                  <label class="form-label">Link Scheda Officina</label>
-                  <div class="input-group">
-                    <input id="schedaLink" class="form-control" type="url" placeholder="https://…">
-                    <a id="openSchedaLink" class="btn btn-outline-secondary" target="_blank" rel="noopener">Apri</a>
-                  </div>
-                </div>
+          <div class="row g-2 mt-2 justify-content-end">
+            <div class="col-md-4">
+              <label class="form-label">Link Scheda Officina</label>
+              <div class="input-group">
+                <input id="schedaLink" class="form-control" type="url" placeholder="https://…">
+                <a id="openSchedaLink" class="btn btn-outline-secondary" target="_blank" rel="noopener">Apri</a>
               </div>
+              <div class="form-text">Salvato solo in questo preventivo.</div>
+            </div>
+          </div>
 <div class="card">
             <div class="table-responsive">
               <table class="table table-hover align-middle m-0" id="linesTable">
@@ -207,6 +200,20 @@
 <script src="app-supabase.js" defer></script>
 <script src="app.js" defer></script>
 
+
+
+<script>
+document.addEventListener('input', function(e){
+  if (e.target && e.target.id === 'schedaLink') {
+    const v = e.target.value.trim();
+    const a = document.getElementById('openSchedaLink');
+    if (a) {
+      if (v) { a.href = v; a.classList.remove('disabled'); }
+      else { a.removeAttribute('href'); a.classList.add('disabled'); }
+    }
+  }
+}, true);
+</script>
 
 </body>
 </html>
