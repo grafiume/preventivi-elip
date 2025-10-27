@@ -502,35 +502,32 @@ const { imp, iva, tot } = collectFlat(c);
 
     const ifr = $('#pdfFrame'); if (ifr) ifr.style.display = 'none';
     const modalBody = document.querySelector('#pdfModal .modal-body');
-const viewer = document.getElementById('pdfViewer');
-let img = document.getElementById('pdfJPGPreview');
-if (modalBody && viewer && !img) {
-  img = document.createElement('img'); img.id='pdfJPGPreview'; img.alt='Anteprima JPG';
-  img.style.maxWidth='100%'; img.style.maxHeight='100%'; img.style.width='auto'; img.style.height='auto'; img.style.cursor='pointer';
-  viewer.appendChild(img);
+if (modalBody) {
+  modalBody.innerHTML = '';
+  const img = document.createElement('img');
+  img.id = 'pdfJPGPreview';
+  img.alt = 'Anteprima JPG';
+  img.style.display = 'block';
+  img.style.maxWidth = '100%';
+  img.style.maxHeight = '70vh';
+  img.style.objectFit = 'contain';
+  img.style.cursor = 'pointer';
+  img.title = 'Clicca per aprire';
+  modalBody.style.position = 'relative';
+  modalBody.appendChild(img);
+  const tip = document.createElement('div');
+  tip.textContent = 'clicca per aprire';
+  tip.style.position = 'absolute'; tip.style.right = '10px'; tip.style.top = '10px';
+  tip.style.background = 'rgba(0,0,0,0.55)'; tip.style.color = '#fff';
+  tip.style.fontSize = '12px'; tip.style.padding = '4px 8px'; tip.style.borderRadius = '8px';
+  tip.style.pointerEvents = 'none';
+  modalBody.appendChild(tip);
 }
 const jpgDataUrl = await makeJPGPreviewCanvas(detail);
     const imgEl = document.getElementById('pdfJPGPreview');
-const viewerEl = document.getElementById('pdfViewer');
 if (imgEl) {
   imgEl.src = jpgDataUrl;
-  const modalDlg = document.querySelector('#pdfModal .modal-dialog');
-  let expanded = false;
-  function fitPreview(){
-    if (!viewerEl) return;
-    if (expanded) { viewerEl.style.height = '100vh'; }
-    else { viewerEl.style.height = (Math.max(400, Math.floor(window.innerHeight*0.72))) + 'px'; }
-  }
-  window.addEventListener('resize', fitPreview);
-  fitPreview();
-  imgEl.onclick = ()=>{
-    expanded = !expanded;
-    if (modalDlg) { modalDlg.classList.toggle('modal-fullscreen', expanded); }
-    imgEl.title = expanded ? 'Clicca per ridurre' : 'Clicca per espandere';
-    fitPreview();
-  };
-}
-  const open = ()=> // navigation removed; using expand-in-modal
+  const open = ()=> window.location.assign(jpgDataUrl);
   imgEl.onclick = open;
   imgEl.addEventListener('click', open);
 }
