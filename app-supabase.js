@@ -48,7 +48,7 @@
       data_invio: ndate(cur.dataInvio),
       data_accettazione: ndate(cur.dataAcc),
       data_scadenza: ndate(cur.dataScad),
-      scheda_link: (typeof cur.schedaLink==='string' && cur.schedaLink.trim()!=='' ? cur.schedaLink.trim() : null),
+      scheda_link: ntext(cur.schedaLink),
       note: ntext(cur.note),
       linee: (cur.lines || []),
       imponibile: nnumber(imponibile),
