@@ -1,13 +1,6 @@
 
 /* Preventivi ELIP — app.js (FINAL v4c) */
 (function(){
-  // Helper: load asset as DataURL (for PDF logos)
-  async function __elipLoadAsDataURL(url){
-    const res = await fetch(url);
-    const blob = await res.blob();
-    return await new Promise((res2,rej)=>{ const fr=new FileReader(); fr.onload=()=>res2(fr.result); fr.onerror=rej; fr.readAsDataURL(blob); });
-  }
-
   'use strict';
   const $ = (s, r=document) => r.querySelector(s);
   const EURO = n => (n||0).toLocaleString('it-IT', { style:'currency', currency:'EUR' });
@@ -409,16 +402,15 @@
     const jsPDF = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : null;
     if (!jsPDF) { alert('jsPDF non disponibile'); return; }
     const doc = new jsPDF({ unit:'pt', format:'a4' });
-    try { const logo = await __elipLoadAsDataURL('logo.png'); doc.addImage(logo, 'PNG', 40, 30, 180, 60); } catch{}
     const title = `Preventivo ${c.id}`;
-    doc.setFontSize(64); doc.text(title, 40, 120);
-    doc.setFontSize(44);
-    doc.text(`Cliente: ${c.cliente||''}`, 40, 180);
-    doc.text(`Articolo: ${c.articolo||''}`, 40, 220);
-    doc.text(`DDT: ${c.ddt||''}`, 40, 260);
-    doc.text(`Data invio: ${DTIT(c.dataInvio)||''}`, 40, 300);
-    doc.text(`Data accettazione: ${DTIT(c.dataAcc)||''}`, 40, 340);
-    doc.text(`Scadenza lavori: ${DTIT(c.dataScad)||''}`, 40, 380);
+    doc.setFontSize(16); doc.text(title, 40, 40);
+    doc.setFontSize(11);
+    doc.text(`Cliente: ${c.cliente||''}`, 40, 70);
+    doc.text(`Articolo: ${c.articolo||''}`, 40, 90);
+    doc.text(`DDT: ${c.ddt||''}`, 40, 110);
+    doc.text(`Data invio: ${DTIT(c.dataInvio)||''}`, 40, 130);
+    doc.text(`Data accettazione: ${DTIT(c.dataAcc)||''}`, 40, 150);
+    doc.text(`Scadenza lavori: ${DTIT(c.dataScad)||''}`, 40, 170);
     if (detail && doc.autoTable) {
       const rows = (c.lines||[]).map(r => [r.code||'', r.desc||'', r.qty||0, (r.price||0), ((+r.qty||0)*(+r.price||0))]);
       if (rows.length) {
@@ -464,29 +456,27 @@
     const { imp, iva, tot } = collectFlat(c);
     const W = 794, H = 1123;
     const canvas = document.createElement('canvas');
-    let imgLogo = null; try { imgLogo = new Image(); imgLogo.src = 'logo.png'; await imgLogo.decode(); } catch {}
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
     ctx.fillStyle = '#000000';
-    try { ctx.drawImage(imgLogo, 40, 30, 260, 90); } catch {}
-    ctx.font = 'bold 88px Arial';
-    ctx.fillText(`Preventivo ${c.id}`, 40, 140);
-    ctx.font = '56px Arial';
-    ctx.fillText(`Cliente: ${c.cliente||''}`, 40, 220);
-    ctx.fillText(`Articolo: ${c.articolo||''}`, 40, 260);
-    ctx.fillText(`DDT: ${c.ddt||''}`, 40, 300);
-    ctx.fillText(`Data invio: ${DTIT(c.dataInvio)||''}`, 40, 340);
-    ctx.fillText(`Accettazione: ${DTIT(c.dataAcc)||''}`, 40, 380);
-    ctx.fillText(`Scadenza: ${DTIT(c.dataScad)||''}`, 40, 420);
-    ctx.font = '48px Arial';
-    let y = 460;
-    const maxRows = detail ? 12 : 0;
+    ctx.font = 'bold 22px Arial';
+    ctx.fillText(`Preventivo ${c.id}`, 40, 40);
+    ctx.font = '14px Arial';
+    ctx.fillText(`Cliente: ${c.cliente||''}`, 40, 80);
+    ctx.fillText(`Articolo: ${c.articolo||''}`, 40, 100);
+    ctx.fillText(`DDT: ${c.ddt||''}`, 40, 120);
+    ctx.fillText(`Data invio: ${DTIT(c.dataInvio)||''}`, 40, 140);
+    ctx.fillText(`Accettazione: ${DTIT(c.dataAcc)||''}`, 40, 160);
+    ctx.fillText(`Scadenza: ${DTIT(c.dataScad)||''}`, 40, 180);
+    ctx.font = '12px Arial';
+    let y = 210;
+    const maxRows = detail ? 12 : 6;
     const lines = (c.lines||[]).slice(0, maxRows);
     if (lines.length){
       ctx.fillText('Righe lavorazione:', 40, y); y+=18;
       for (const r of lines){
-        const t = detail ? `${r.code||''}  ${String(r.desc||'').slice(0,60)}  x${r.qty||0}  €${(+r.price||0).toFixed(2)}` : `${r.code||''}  ${String(r.desc||'').slice(0,60)}`;
+        const t = `${r.code||''}  ${String(r.desc||'').slice(0,60)}  x${r.qty||0}  €${(+r.price||0).toFixed(2)}`;
         ctx.fillText(t, 40, y); y+=16;
       }
       if ((c.lines||[]).length > maxRows){
