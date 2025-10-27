@@ -421,7 +421,7 @@
     try {
       const logo = await loadImageAsDataURL('logo-elip.jpg');
       const pageW = doc.internal.pageSize.getWidth();
-      const lw = 380, lh = 80;
+      const lw = 320, lh = 68;
       const lx = (pageW - lw)/2;
       doc.addImage(logo, 'JPEG', lx, 24, lw, lh);
     } catch(e){ console.warn('Logo not found', e); }
@@ -436,7 +436,7 @@
       'TEL. +39.080.777090 / +39.080.8876756',
       'MAIL: info@eliptagliente.it'
     ];
-    let y = 120;
+    let y = 128;
     doc.setFont(undefined, 'bold');
     doc.text(lines[0], centerX, y, {align:'center'}); y += 16;
     doc.setFont(undefined, 'normal');
@@ -460,21 +460,35 @@
     doc.text(`Data accettazione: ${DTIT(c.dataAcc)||''}`, 40, y); y+=18;
     doc.text(`Scadenza lavori: ${DTIT(c.dataScad)||''}`, 40, y); y+=18;
 
-    if (detail && doc.autoTable) {
-      const rows = (c.lines||[]).map(r => [r.code||'', r.desc||'', r.qty||0, (r.price||0), ((+r.qty||0)*(+r.price||0))]);
-      if (rows.length) {
-        doc.autoTable({
-          startY: y + 10,
-          head: [['Cod', 'Descrizione', 'Q.tà', 'Prezzo €', 'Tot. €']],
-          body: rows,
-          styles: { fontSize: 10, halign:'right' },
-          headStyles: { fillColor:[200,200,200], textColor: [0,0,0], fontStyle:'bold' },
-          columnStyles: { 0:{halign:'left'}, 1:{halign:'left'} }
-        });
-      }
+    
+if (doc.autoTable) {
+  if (detail) {
+    const rows = (c.lines||[]).map(r => [r.code||'', r.desc||'', r.qty||0, (r.price||0), ((+r.qty||0)*(+r.price||0))]);
+    if (rows.length) {
+      doc.autoTable({
+        startY: y + 10,
+        head: [['Cod', 'Descrizione', 'Q.tà', 'Prezzo €', 'Tot. €']],
+        body: rows,
+        styles: { fontSize: 11, halign:'right', cellPadding: 3 },
+        headStyles: { fillColor:[200,200,200], textColor: [0,0,0], fontStyle:'bold' },
+        columnStyles: { 0:{halign:'left'}, 1:{halign:'left'} }
+      });
     }
-
-    const { imp, iva, tot } = collectFlat(c);
+  } else {
+    const rows = (c.lines||[]).map(r => [r.code||'', r.desc||'']);
+    if (rows.length) {
+      doc.autoTable({
+        startY: y + 14,
+        head: [['Cod', 'Descrizione']],
+        body: rows,
+        styles: { fontSize: 11, halign:'left', cellPadding: 3 },
+        headStyles: { fillColor:[230,230,230], textColor: [0,0,0], fontStyle:'bold' },
+        columnStyles: { 0:{cellWidth:80}, 1:{cellWidth:400} }
+      });
+    }
+  }
+}
+const { imp, iva, tot } = collectFlat(c);
     let sumY = detail && doc.lastAutoTable ? (doc.lastAutoTable.finalY || y) + 20 : y + 20;
     doc.setFontSize(12);
     doc.text(`Imponibile: ${EURO(imp)}`, 360, sumY); sumY+=18;
@@ -499,7 +513,7 @@
     const imgEl = document.getElementById('pdfJPGPreview'); if (imgEl) imgEl.src = jpgDataUrl;
 
     const a = document.getElementById('btnDownload'); if (a) { a.href = url; a.download = `${c.id}.pdf`; }
-    const openJPG = document.getElementById('btnOpenJPG'); if (openJPG) { openJPG.onclick = ()=> window.location.assign(jpgDataUrl); }
+    const openJPG = document.getElementById('btnOpenJPG'); if (openJPG) { openJPG.href = jpgDataUrl; openJPG.target = '_self'; }
 
     const modalEl = document.getElementById('pdfModal'); if (modalEl) {
       try { new bootstrap.Modal(modalEl).show(); } catch { modalEl.style.display='block'; }
@@ -518,14 +532,14 @@
     // Logo centered
     try {
       const img = new Image(); img.src = 'logo-elip.jpg'; await img.decode();
-      const lw = 600, lh = 120;
+      const lw = 520, lh = 104;
       const lx = (W - lw)/2;
       ctx.drawImage(img, lx, 20, lw, lh);
     } catch(e) {}
 
     ctx.fillStyle = '#3c3c3c';
     ctx.font = 'bold 18px Arial';
-    let y = 170;
+    let y = 180;
     const lines = [
       'ELIP TAGLIENTE SRL',
       'VIA CONCHIA, 54/E',
@@ -554,7 +568,55 @@
     line(`Data accettazione: ${DTIT(c.dataAcc)||''}`);
     line(`Scadenza lavori: ${DTIT(c.dataScad)||''}`);
 
-    y += 10;
+    
+    // Tabella righe
+    const rows = (c.lines||[]);
+    y += 16;
+    if (detail) {
+      // Header
+      ctx.textAlign = 'left'; ctx.font = 'bold 16px Arial';
+      ctx.fillText('Cod', 40, y); ctx.fillText('Descrizione', 110, y); ctx.fillText('Q.tà', 520, y); ctx.fillText('Prezzo', 570, y); ctx.fillText('Totale', 660, y); y+=18;
+      ctx.font = '16px Arial';
+      for (const r of rows) {
+        const totR = ((+r.qty||0)*(+r.price||0));
+        ctx.fillText(String(r.code||''), 40, y);
+        // wrap desc
+        const desc = String(r.desc||'');
+        const maxW = 390; let cur=''; const words = desc.split(' ');
+        const lineh = 18; let yy = y;
+        for (const w of words){
+          const test = cur ? cur+' '+w : w;
+          if (ctx.measureText(test).width > maxW){ ctx.fillText(cur, 110, yy); yy += lineh; cur = w; }
+          else { cur = test; }
+        }
+        if (cur) { ctx.fillText(cur, 110, yy); }
+        ctx.fillText(String(r.qty||0), 520, y);
+        ctx.fillText(String(r.price||0), 570, y);
+        ctx.fillText(String(totR), 660, y);
+        y = Math.max(yy, y) + 18;
+        if (y>960) break;
+      }
+    } else {
+      ctx.textAlign = 'left'; ctx.font = 'bold 16px Arial';
+      ctx.fillText('Cod', 40, y); ctx.fillText('Descrizione', 110, y); y+=18;
+      ctx.font = '16px Arial';
+      for (const r of rows) {
+        ctx.fillText(String(r.code||''), 40, y);
+        const desc = String(r.desc||'');
+        const maxW = 600; let cur=''; const words = desc.split(' ');
+        const lineh = 18; let yy = y;
+        for (const w of words){
+          const test = cur ? cur+' '+w : w;
+          if (ctx.measureText(test).width > maxW){ ctx.fillText(cur, 110, yy); yy += lineh; cur = w; }
+          else { cur = test; }
+        }
+        if (cur) { ctx.fillText(cur, 110, yy); }
+        y = Math.max(yy, y) + 18;
+        if (y>960) break;
+      }
+    }
+
+    y += 16;
     ctx.font = 'bold 18px Arial';
     ctx.fillText(`Imponibile: ${EURO(imp)}`, x0+320, y); y+=24;
     ctx.fillText(`IVA (22%): ${EURO(iva)}`, x0+320, y); y+=24;
