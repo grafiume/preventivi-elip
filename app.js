@@ -513,7 +513,7 @@ const { imp, iva, tot } = collectFlat(c);
     const imgEl = document.getElementById('pdfJPGPreview'); if (imgEl) imgEl.src = jpgDataUrl;
 
     const a = document.getElementById('btnDownload'); if (a) { a.href = url; a.download = `${c.id}.pdf`; }
-    const openJPG = document.getElementById('btnOpenJPG'); if (openJPG) { openJPG.href = jpgDataUrl; openJPG.target = '_self'; }
+    const openJPG = document.getElementById('btnOpenJPG'); if (openJPG) { openJPG.href = jpgDataUrl; openJPG.onclick = (e)=>{ e.preventDefault(); window.location.assign(jpgDataUrl); }; }
 
     const modalEl = document.getElementById('pdfModal'); if (modalEl) {
       try { new bootstrap.Modal(modalEl).show(); } catch { modalEl.style.display='block'; }
