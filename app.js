@@ -384,6 +384,7 @@
     };
     setCurLight(cur);
     fillForm();
+    try { let v=(initCur()?.schedaLink||''); if(v && !/^https?:\/\//i.test(v)) v='https://'+v; const i=document.getElementById('schedaLink'); if(i) i.value=v; const a=document.getElementById('openSchedaLink'); if(a) { if(v){ a.href=v; a.classList.remove('disabled'); } else { a.removeAttribute('href'); a.classList.add('disabled'); } } } catch {}
     renderLines(); updateDeadlineUI(); updateDaysLeftBanner();
     try { window.dbApi?.loadPhotosFor(cur.id).then(list => setServerThumbs(list)); } catch {}
     const btn = document.querySelector('[data-bs-target="#tab-editor"]');
@@ -653,7 +654,7 @@ Totale: ${EURO(tot)}`);
     c.email     = ($('#email')?.value || '').trim();
     c.dataInvio = ($('#dataInvio')?.value || '').trim();
     c.dataAcc   = ($('#dataAcc')?.value || '').trim();
-    c.dataScad  = ($('#dataScad')?.value || '').trim();
+    \1(function(){ let v = ($('#schedaLink')?.value || '').trim(); if (v && !/^https?:\/\//i.test(v)) v = 'https://' + v; c.schedaLink = v; })();
     c.note      = ($('#note')?.value || '');
     setCurLight(c);
     return c;
